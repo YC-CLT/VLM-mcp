@@ -1,0 +1,15 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.trae
+mcp_tools_summary.csv
+docs/superpowers/*
+log.txt
+.env
