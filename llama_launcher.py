@@ -100,6 +100,7 @@ def start() -> subprocess.Popen | None:
         "-ctk", str(cfg["cache_type_k"]),
         "-ctv", str(cfg["cache_type_v"]),
         "-np", str(cfg["parallel"]),
+        "--image-min-tokens", str(cfg.get("image_min_tokens", 1024)),
         "--no-webui",
     ]
 

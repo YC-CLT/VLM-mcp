@@ -48,7 +48,7 @@ LLAMA_DEFAULTS = {
     "server_exe": "llama-server",
     "host": "127.0.0.1",
     "port": 11433,
-    "ngl": 0,
+    "ngl": 99,
     "ctx_size": 8192,
     "predict": 16384,
     "temperature": 0.7,
@@ -60,6 +60,7 @@ LLAMA_DEFAULTS = {
     "cache_type_k": "f16",
     "cache_type_v": "f16",
     "parallel": 1,
+    "image_min_tokens": 1024,
     "health_poll_interval": 3,
     "health_poll_timeout": 180,
 }
