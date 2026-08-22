@@ -42,3 +42,8 @@
 7. 提交：调用 finishing-a-development-branch → 分组提交
 
 ## 经验/坑点
+
+- **MCP 2.0 API 变更**：`mcp.server.fastmcp.FastMCP` → `mcp.server.mcpserver.MCPServer`，`mcp.run(transport="sse")` → `mcp.run_sse_async(host=, port=)` 是 async 方法需 `asyncio.run()` 包装
+- **cmd-exec-mcp 参数名**：`execute_local` 用 `cwd` 而非 `workdir`
+- **uv 需先 `uv venv` 再 `uv pip install`**，否则报 `No virtual environment found`
+- **test 阈值**：`IMAGE_MAX_SIZE_MB` monkeypatch 测试时需设极小值（如 0.00001）才能触发 10x10 PNG 的超大判断
