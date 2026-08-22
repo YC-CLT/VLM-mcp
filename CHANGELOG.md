@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-22 — 完善与修复
+
+### Fixed
+
+- **GPU offload**：`ngl` 默认值从 `0` 改为 `99`，llama-server 默认全 GPU 运行
+- **image-min-tokens**：llama-server 启动参数新增 `--image-min-tokens 1024`，满足 Qwen-VL 最低要求
+
+### Added
+
+- **后端 enabled 字段**：`config.json` 和 `config.example.json` 中每个后端增加 `"enabled"` 字段，支持手动禁用
+- **using-vlm-mcp skill**：新增 `skills/using-vlm-mcp/SKILL.md`，为 AI 助手提供 VLM-MCP 使用指南
+
+### Documentation
+
+- **README.md**：补全项目地址、克隆 URL、GPU 配置说明、常见问题章节
+- **config.example.json**：`ngl: 0` → `ngl: 99`
+
+---
+
 ## 2026-08-22 — VLM-MCP Initial Implementation
 
 ### Added

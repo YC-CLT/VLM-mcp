@@ -1,7 +1,21 @@
 [project]
 name = "vlm-mcp"
 version = "0.1.0"
-description = "VLM-based image understanding MCP Server with local llama.cpp and online Qwen3-VL support"
+description = "VLM-based image understanding MCP Server with local llama.cpp and online VLM support"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "YC-CLT" },
+]
+keywords = ["vlm", "mcp", "llama.cpp", "vision-language-model", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.11"
 dependencies = [
     "mcp>=1.0",
@@ -10,6 +24,9 @@ dependencies = [
     "requests>=2.28",
     "uvicorn>=0.24",
 ]
+
+[project.urls]
+Repository = "https://github.com/YC-CLT/VLM-mcp"
 
 [project.optional-dependencies]
 dev = [
