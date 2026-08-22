@@ -51,6 +51,23 @@
 
 - `main.py` 从占位 Hello World 重写为正式入口点
 
+### Fixed
+
+- `server.py`：`session.in_use` 泄漏（外层 `try/finally` 覆盖所有退出路径）
+- `server.py`：`run_server()` 事件循环时序（`async def _run()` + `asyncio.run()` 包裹）
+- `providers/`：同步 `OpenAI` → `AsyncOpenAI`，避免阻塞 event loop
+- `providers/`：补 `enabled: false` 手动禁用后端检查
+- `providers/__init__.py`：补 `list_backends` 导出
+- `llama_launcher.py`：`config._CONFIG` → `config.get_llama_exe()` / `get_llama_config()`
+- `logger.py`：`logging.INFO` 硬编码 → `config.LOG_LEVEL`
+- `config.py`：新增 `get_llama_config()` / `get_llama_exe()` 公开接口
+- `pyproject.toml`：补 `description` 字段 + `[project.optional-dependencies] dev`
+
+### Documentation
+
+- `README.md`：从空文件补全（特性、架构、快速开始、工具表、配置常量）
+- `AGENTS.md`：补关键文件表、关键常量表、新增 5 条经验/坑点
+
 ### Technical Notes
 
 - MCP 2.0 API 与 1.x 不兼容：`FastMCP` → `MCPServer`，`mcp.run()` → `mcp.run_sse_async()`

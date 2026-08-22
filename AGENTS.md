@@ -8,15 +8,41 @@
 
 ## 关键文件
 
+| 文件 | 作用 |
+|------|------|
+| `main.py` | 入口，启动 llama-server → 运行 MCP → 停止 |
+| `server.py` | MCP Server，6 个工具，SSE 传输 (端口 11432) |
+| `config.py` | 所有常量 + `config.json` 加载 |
+| `config.json` | 敏感配置（API Key、模型路径），不入 git |
+| `llama_launcher.py` | llama-server 子进程生命周期（启/停/健康检查） |
+| `providers/openai_compat.py` | OpenAI 兼容 API 客户端（AsyncOpenAI） |
+| `session_manager.py` | 会话 CRUD + 超时清理 + 满时驱逐 |
+| `cache.py` | L1 图片缓存（LRU）+ L2 响应缓存（LRU + TTL） |
+| `image_utils.py` | 图片源解析（路径/URL/Data URI/Base64 回退） |
+| `logger.py` | 单例 logger → `log.txt` |
+
 ## 关键常量
+
+| 常量 | 位置 | 说明 |
+|------|------|------|
+| `IMAGE_MAX_SIZE_MB` | `config.py` | 图片最大体积 (20MB) |
+| `IMAGE_DOWNLOAD_TIMEOUT` | `config.py` | 图片下载超时秒数 (10s) |
+| `CACHE_IMAGE_MAX_ENTRIES` | `config.py` | L1 缓存上限 (100) |
+| `CACHE_RESPONSE_MAX_ENTRIES` | `config.py` | L2 缓存上限 (500) |
+| `CACHE_RESPONSE_TTL_ONLINE` | `config.py` | 在线后端缓存 TTL (3600s) |
+| `CACHE_RESPONSE_TTL_LOCAL` | `config.py` | 本地后端缓存 TTL (1800s) |
+| `SESSION_TTL` | `config.py` | 会话超时秒数 (1800s) |
+| `SESSION_MAX` | `config.py` | 每后端最大会话数 (5) |
+| `LOG_LEVEL` | `config.py` | 日志级别 ("INFO") |
+| `LLAMA_DEFAULTS` | `config.py` | llama-server 启动参数默认值 |
+| `BACKENDS` | `config.py` | 从 `config.json` 加载的后端配置 |
+| `CACHE_ENABLED` | `config.py` | 从 `config.json` 加载的缓存开关 |
 
 ## 规则
 
 - **monkeypatch 必须用 `import config` + `config.X`**：`from config import X` 创建本地副本，monkeypatch 无法穿透；executor 同理 patch `executors.模块名.X`
 - **config 重命名全量 grep**：常量改名/移除后搜索所有引用
 - **跨 Task 依赖等待**：并行派发时先检查上游产物是否存在
-
-## 查文献指南
 
 ## 工具
 
@@ -47,3 +73,8 @@
 - **cmd-exec-mcp 参数名**：`execute_local` 用 `cwd` 而非 `workdir`
 - **uv 需先 `uv venv` 再 `uv pip install`**，否则报 `No virtual environment found`
 - **test 阈值**：`IMAGE_MAX_SIZE_MB` monkeypatch 测试时需设极小值（如 0.00001）才能触发 10x10 PNG 的超大判断
+- **asyncio.create_task 时序**：必须在 running event loop 内调用，同步代码中需用 `async def` + `asyncio.run()` 包裹
+- **session.in_use 泄漏**：工具函数中 `in_use = True` 后所有退出路径必须重置，用外层 `try/finally` 兜底
+- **AsyncOpenAI 必用**：async MCP 工具内必须用 `AsyncOpenAI`，同步 `OpenAI` 会阻塞整个 event loop
+- **__init__.py 导出完整性**：公开接口全部从 `__init__.py` 导出，调用方不从子模块直接导入，保持风格一致
+- **config 常量消费**：`config.py` 定义的常量必须在对应模块中实际使用，避免死代码
