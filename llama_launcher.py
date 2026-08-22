@@ -13,7 +13,7 @@ logger = get_logger()
 
 
 def _find_exe() -> str:
-    server_exe = config._CONFIG.get("llama", {}).get("server_exe") or config.LLAMA_DEFAULTS["server_exe"]
+    server_exe = config.get_llama_exe()
     if Path(server_exe).is_absolute() and Path(server_exe).exists():
         return server_exe
     found = shutil.which(server_exe)
@@ -26,7 +26,7 @@ def _find_exe() -> str:
 
 
 def _get_llama_config() -> dict:
-    merged = {**config.LLAMA_DEFAULTS, **config._CONFIG.get("llama", {})}
+    merged = config.get_llama_config()
     if not merged.get("model"):
         raise ValueError("config.json: llama.model is required (GGUF model path)")
     if not merged.get("mmproj"):

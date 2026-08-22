@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from image_utils import ImageInput
 from providers.base import BaseProvider, VLMResponse
@@ -49,9 +49,14 @@ class OpenAICompatProvider(BaseProvider):
                 raise BackendDisabledError(
                     f"Backend '{backend_name}' is disabled: '{field}' is empty"
                 )
+        if not cfg.get("enabled", True):
+            _disabled_backends.add(backend_name)
+            raise BackendDisabledError(
+                f"Backend '{backend_name}' is disabled: 'enabled' is false"
+            )
 
         self._name = backend_name
-        self._client = OpenAI(
+        self._client = AsyncOpenAI(
             base_url=cfg["base_url"],
             api_key=cfg.get("api_key", "sk-no-key-required"),
         )
@@ -63,10 +68,10 @@ class OpenAICompatProvider(BaseProvider):
                 f"Backend '{self._name}' is disabled. Restart MCP to re-enable."
             )
 
-    def _call_api(self, messages: list[dict]) -> VLMResponse:
+    async def _call_api(self, messages: list[dict]) -> VLMResponse:
         self._check_disabled()
         try:
-            resp = self._client.chat.completions.create(
+            resp = await self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
                 stream=False,
@@ -92,7 +97,7 @@ class OpenAICompatProvider(BaseProvider):
                 f"Backend '{self._name}' error: {e}"
             ) from e
 
-    def analyze(self, image: ImageInput, prompt: str) -> VLMResponse:
+    async def analyze(self, image: ImageInput, prompt: str) -> VLMResponse:
         message = {
             "role": "user",
             "content": [
@@ -100,10 +105,10 @@ class OpenAICompatProvider(BaseProvider):
                 {"type": "text", "text": prompt},
             ],
         }
-        return self._call_api([message])
+        return await self._call_api([message])
 
-    def chat(self, messages: list[dict]) -> VLMResponse:
-        return self._call_api(messages)
+    async def chat(self, messages: list[dict]) -> VLMResponse:
+        return await self._call_api(messages)
 
 
 def get_provider(backend_name: str) -> OpenAICompatProvider:

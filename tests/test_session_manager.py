@@ -1,5 +1,5 @@
 import pytest
-from session_manager import SessionNotFoundError, SessionFullError, session_manager
+from session_manager import SessionNotFoundError, session_manager
 
 
 @pytest.mark.asyncio

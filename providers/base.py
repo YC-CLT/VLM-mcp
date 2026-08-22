@@ -12,9 +12,9 @@ class VLMResponse:
 
 class BaseProvider(ABC):
     @abstractmethod
-    def analyze(self, image, prompt: str) -> VLMResponse:
+    async def analyze(self, image, prompt: str) -> VLMResponse:
         ...
 
     @abstractmethod
-    def chat(self, messages: list[dict]) -> VLMResponse:
+    async def chat(self, messages: list[dict]) -> VLMResponse:
         ...

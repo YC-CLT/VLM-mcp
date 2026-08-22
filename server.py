@@ -89,87 +89,87 @@ async def analyze_image(
         session.in_use = True
 
     try:
-        provider = get_provider(backend)
-    except BackendNotFoundError as e:
-        return {"error": "BACKEND_NOT_FOUND", "detail": str(e)}
-    except BackendDisabledError as e:
-        return {"error": "BACKEND_DISABLED", "detail": str(e)}
-
-    img_input: ImageInput | None = None
-    img_bytes: bytes | None = None
-    if image is not None:
         try:
-            img_input = resolve_image(image)
-            img_bytes = base64.b64decode(img_input.data_uri.split(",", 1)[1])
-            cached_uri = await image_cache.get(img_input.sha256)
-            if cached_uri:
-                img_input.data_uri = cached_uri
+            provider = get_provider(backend)
+        except BackendNotFoundError as e:
+            return {"error": "BACKEND_NOT_FOUND", "detail": str(e)}
+        except BackendDisabledError as e:
+            return {"error": "BACKEND_DISABLED", "detail": str(e)}
+
+        img_input: ImageInput | None = None
+        img_bytes: bytes | None = None
+        if image is not None:
+            try:
+                img_input = resolve_image(image)
+                img_bytes = base64.b64decode(img_input.data_uri.split(",", 1)[1])
+                cached_uri = await image_cache.get(img_input.sha256)
+                if cached_uri:
+                    img_input.data_uri = cached_uri
+                else:
+                    await image_cache.set(img_input.sha256, img_input.data_uri)
+            except ImageNotFoundError as e:
+                return {"error": "IMAGE_NOT_FOUND", "detail": str(e)}
+            except ImageDownloadError as e:
+                return {"error": "IMAGE_DOWNLOAD_FAILED", "detail": str(e)}
+            except ImageInvalidFormatError as e:
+                return {"error": "IMAGE_INVALID_FORMAT", "detail": str(e)}
+            except ImageTooLargeError as e:
+                return {"error": "IMAGE_TOO_LARGE", "detail": str(e)}
+            except ImageInvalidBase64Error as e:
+                return {"error": "IMAGE_INVALID_BASE64", "detail": str(e)}
+
+        if session_id is None and img_bytes is not None and config.CACHE_ENABLED:
+            cached = await response_cache.get(img_bytes, prompt, backend)
+            if cached:
+                return {
+                    "text": cached["text"],
+                    "model": cached["model"],
+                    "tokens_used": cached["tokens_used"],
+                    "cache_hit": True,
+                    "session_id": None,
+                }
+
+        try:
+            if session_id:
+                session = await session_manager.get(session_id)
+                message = _build_message(img_input, prompt)
+                session.messages.append(message)
+                session.msg_count += 1
+                if img_input is not None:
+                    session.image_uris.append(img_input.data_uri)
+                result = await provider.chat(session.messages)
+                session.messages.append({"role": "assistant", "content": result.text})
+                session.msg_count += 1
+                return {
+                    "text": result.text,
+                    "model": result.model,
+                    "tokens_used": result.tokens_used,
+                    "cache_hit": False,
+                    "session_id": session_id,
+                }
             else:
-                await image_cache.set(img_input.sha256, img_input.data_uri)
-        except ImageNotFoundError as e:
-            return {"error": "IMAGE_NOT_FOUND", "detail": str(e)}
-        except ImageDownloadError as e:
-            return {"error": "IMAGE_DOWNLOAD_FAILED", "detail": str(e)}
-        except ImageInvalidFormatError as e:
-            return {"error": "IMAGE_INVALID_FORMAT", "detail": str(e)}
-        except ImageTooLargeError as e:
-            return {"error": "IMAGE_TOO_LARGE", "detail": str(e)}
-        except ImageInvalidBase64Error as e:
-            return {"error": "IMAGE_INVALID_BASE64", "detail": str(e)}
-
-    if session_id is None and img_bytes is not None and config.CACHE_ENABLED:
-        cached = await response_cache.get(img_bytes, prompt, backend)
-        if cached:
-            return {
-                "text": cached["text"],
-                "model": cached["model"],
-                "tokens_used": cached["tokens_used"],
-                "cache_hit": True,
-                "session_id": None,
-            }
-
-    try:
-        if session_id:
-            session = await session_manager.get(session_id)
-            message = _build_message(img_input, prompt)
-            session.messages.append(message)
-            session.msg_count += 1
-            if img_input is not None:
-                session.image_uris.append(img_input.data_uri)
-            result = provider.chat(session.messages)
-            session.messages.append({"role": "assistant", "content": result.text})
-            session.msg_count += 1
-            session.in_use = False
-            return {
-                "text": result.text,
-                "model": result.model,
-                "tokens_used": result.tokens_used,
-                "cache_hit": False,
-                "session_id": session_id,
-            }
-        else:
-            result = provider.analyze(img_input, prompt)
-            if img_bytes is not None and config.CACHE_ENABLED:
-                await response_cache.set(
-                    img_bytes, prompt, backend,
-                    {"text": result.text, "tokens_used": result.tokens_used, "model": result.model},
-                )
-            return {
-                "text": result.text,
-                "model": result.model,
-                "tokens_used": result.tokens_used,
-                "cache_hit": False,
-                "session_id": None,
-            }
-    except BackendAuthError as e:
-        return {"error": "BACKEND_AUTH_ERROR", "detail": str(e)}
-    except BackendDisabledError as e:
-        return {"error": "BACKEND_DISABLED", "detail": str(e)}
-    except BackendUnavailableError as e:
-        return {"error": "BACKEND_UNAVAILABLE", "detail": str(e)}
-    except Exception as e:
-        logger.error("Unexpected error: %s", e, exc_info=True)
-        return {"error": "BACKEND_API_ERROR", "detail": str(e)}
+                result = await provider.analyze(img_input, prompt)
+                if img_bytes is not None and config.CACHE_ENABLED:
+                    await response_cache.set(
+                        img_bytes, prompt, backend,
+                        {"text": result.text, "tokens_used": result.tokens_used, "model": result.model},
+                    )
+                return {
+                    "text": result.text,
+                    "model": result.model,
+                    "tokens_used": result.tokens_used,
+                    "cache_hit": False,
+                    "session_id": None,
+                }
+        except BackendAuthError as e:
+            return {"error": "BACKEND_AUTH_ERROR", "detail": str(e)}
+        except BackendDisabledError as e:
+            return {"error": "BACKEND_DISABLED", "detail": str(e)}
+        except BackendUnavailableError as e:
+            return {"error": "BACKEND_UNAVAILABLE", "detail": str(e)}
+        except Exception as e:
+            logger.error("Unexpected error: %s", e, exc_info=True)
+            return {"error": "BACKEND_API_ERROR", "detail": str(e)}
     finally:
         if session_id:
             try:
@@ -225,6 +225,12 @@ async def list_templates() -> dict:
 
 
 def run_server():
-    session_manager.start_cleanup_task()
-    logger.info("VLM-MCP server starting on port 11432")
-    asyncio.run(mcp.run_sse_async(host="127.0.0.1", port=11432))
+    async def _run():
+        session_manager.start_cleanup_task()
+        logger.info("VLM-MCP server starting on port 11432")
+        try:
+            await mcp.run_sse_async(host="127.0.0.1", port=11432)
+        finally:
+            session_manager.stop_cleanup_task()
+
+    asyncio.run(_run())

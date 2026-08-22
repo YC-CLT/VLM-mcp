@@ -77,3 +77,11 @@ _CONFIG = _load_json()
 BACKENDS = _CONFIG.get("backends", {})
 DEFAULT_BACKEND = _CONFIG.get("default_backend", "llama-cpp")
 CACHE_ENABLED = _CONFIG.get("cache_enabled", True)
+
+
+def get_llama_config() -> dict:
+    return {**LLAMA_DEFAULTS, **_CONFIG.get("llama", {})}
+
+
+def get_llama_exe() -> str:
+    return _CONFIG.get("llama", {}).get("server_exe") or LLAMA_DEFAULTS["server_exe"]
