@@ -15,13 +15,12 @@ from image_utils import (
     resolve_image,
 )
 from logger import get_logger
-from providers import get_provider
+from providers import get_provider, list_backends
 from providers.openai_compat import (
     BackendNotFoundError,
     BackendAuthError,
     BackendDisabledError,
     BackendUnavailableError,
-    list_backends,
 )
 from session_manager import (
     SessionNotFoundError,
