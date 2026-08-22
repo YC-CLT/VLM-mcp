@@ -1,7 +1,15 @@
 [project]
 name = "vlm-mcp"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "mcp>=1.0",
+    "openai>=1.0",
+    "Pillow>=10.0",
+    "requests>=2.28",
+    "uvicorn>=0.24",
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

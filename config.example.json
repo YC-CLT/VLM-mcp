@@ -1,0 +1,37 @@
+{
+  "backends": {
+    "llama-cpp": {
+      "base_url": "http://localhost:11433/v1",
+      "api_key": "sk-no-key-required",
+      "model_name": "qwen3-vl"
+    },
+    "qwen-vl": {
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "your-dashscope-api-key",
+      "model_name": "qwen-vl-flash"
+    }
+  },
+  "default_backend": "llama-cpp",
+  "cache_enabled": true,
+  "llama": {
+    "server_exe": "llama-server",
+    "model": "请替换为模型文件绝对路径",
+    "mmproj": "请替换为投影器文件绝对路径",
+    "host": "127.0.0.1",
+    "port": 11433,
+    "ngl": 0,
+    "ctx_size": 8192,
+    "predict": 16384,
+    "temperature": 0.7,
+    "top_k": 20,
+    "top_p": 0.8,
+    "repeat_penalty": 1.0,
+    "presence_penalty": 1.5,
+    "flash_attn": "auto",
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "parallel": 1,
+    "health_poll_interval": 3,
+    "health_poll_timeout": 180
+  }
+}
