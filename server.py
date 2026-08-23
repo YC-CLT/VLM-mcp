@@ -44,7 +44,7 @@ def _build_message(image: ImageInput | None, prompt: str) -> dict:
     }
 
 
-@mcp.tool()
+@mcp.tool(description="分析图片：传 image + prompt 或 template。无 session 时 image 必传")
 async def analyze_image(
     image: str | None = None,
     prompt: str | None = None,
@@ -178,7 +178,7 @@ async def analyze_image(
                 pass
 
 
-@mcp.tool()
+@mcp.tool(description="创建多轮对话会话，绑定后端。用完必须 close_session")
 async def create_session(backend: str | None = None) -> dict:
     if backend is None:
         backend = config.DEFAULT_BACKEND
@@ -189,7 +189,7 @@ async def create_session(backend: str | None = None) -> dict:
         return {"error": "SESSION_FULL", "detail": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(description="关闭会话，释放槽位")
 async def close_session(session_id: str) -> dict:
     try:
         await session_manager.close(session_id)
@@ -198,18 +198,18 @@ async def close_session(session_id: str) -> dict:
         return {"error": "SESSION_NOT_FOUND", "detail": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(description="列出所有活跃会话")
 async def list_sessions() -> dict:
     sessions = await session_manager.list_sessions()
     return {"sessions": sessions}
 
 
-@mcp.tool()
+@mcp.tool(description="列出可用后端及其状态")
 async def list_backends_tool() -> dict:
     return {"backends": list_backends()}
 
 
-@mcp.tool()
+@mcp.tool(description="列出内置提示词模板")
 async def list_templates() -> dict:
     return {
         "templates": [
