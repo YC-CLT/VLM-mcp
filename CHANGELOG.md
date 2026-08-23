@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-22 — auto_launch 开关
+
+### Added
+
+- **auto_launch 开关**：`config.json` 的 `llama` 段新增 `"auto_launch"` 字段，默认 `true`
+  - `true`：自动启动 llama-server 子进程（与之前行为一致）
+  - `false`：跳过子进程启动，适用手动启动或纯在线后端场景
+  - `false` 且端口无人在听时，自动禁用 llama-cpp 后端并输出警告
+- **providers**：新增 `disable_backend(name)` 公开函数，支持外部禁用后端
+
+### Changed
+
+- **main.py**：重构启动流程，根据 `auto_launch` 分支处理子进程生命周期
+
+---
+
 ## 2026-08-22 — 完善与修复
 
 ### Fixed

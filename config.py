@@ -63,6 +63,7 @@ LLAMA_DEFAULTS = {
     "image_min_tokens": 1024,
     "health_poll_interval": 3,
     "health_poll_timeout": 180,
+    "auto_launch": True,
 }
 
 

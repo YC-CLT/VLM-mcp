@@ -111,6 +111,11 @@ class OpenAICompatProvider(BaseProvider):
         return await self._call_api(messages)
 
 
+def disable_backend(name: str) -> None:
+    _disabled_backends.add(name)
+    _logger.warning("Backend '%s' manually disabled", name)
+
+
 def get_provider(backend_name: str) -> OpenAICompatProvider:
     return OpenAICompatProvider(backend_name)
 
