@@ -134,6 +134,7 @@ Add to your MCP client configuration:
 {
   "mcpServers": {
     "vlm-mcp": {
+      "type": "sse",
       "url": "http://127.0.0.1:11432/sse"
     }
   }
@@ -354,6 +355,7 @@ MCP SSE 端点：`http://127.0.0.1:11432/sse`
 {
   "mcpServers": {
     "vlm-mcp": {
+      "type": "sse",
       "url": "http://127.0.0.1:11432/sse"
     }
   }

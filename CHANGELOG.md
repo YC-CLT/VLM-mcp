@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-22 — 测试覆盖 + 在线后端 mock
+
+### Added
+
+- **测试图片集**：`tests/imgs/` 6 张真实图片，覆盖全部 5 个模板（chart/ocr/qa/translate/describe）
+- **test_images.py**：24 个测试，验证真实图片 resolve / base64 解码 / 存在性 / SHA256
+- **test_provider.py**：9 个测试，mock AsyncOpenAI 验证在线后端创建 / 禁用 / auth 401 / 500 错误 / disable_backend / list_backends
+
+### Fixed
+
+- **README.md**：MCP 客户端配置 JSON 缺 `"type": "sse"` 字段
+- **config.example.json**：`auto_launch` 字段位置修正
+
+---
+
 ## 2026-08-22 — auto_launch 开关
 
 ### Added
