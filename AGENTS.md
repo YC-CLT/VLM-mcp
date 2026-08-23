@@ -78,3 +78,5 @@
 - **AsyncOpenAI 必用**：async MCP 工具内必须用 `AsyncOpenAI`，同步 `OpenAI` 会阻塞整个 event loop
 - **__init__.py 导出完整性**：公开接口全部从 `__init__.py` 导出，调用方不从子模块直接导入，保持风格一致
 - **config 常量消费**：`config.py` 定义的常量必须在对应模块中实际使用，避免死代码
+- **config 热加载无效**：`config.py` 在 import 时加载 `config.json`，修改配置后必须重启服务端才能生效
+- **HTTP 403 不等价 Auth Error**：API 返回 403 可能是额度耗尽（`AllocationQuota.FreeTierOnly`）而非 Key 无效，provider 中勿将 401/403 统一按 Auth Error 禁用后端

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-23 — 在线后端联调 + 诊断工具
+
+### Added
+
+- **tools/**：DashScope 诊断脚本集
+  - `test_dashscope.py`：直连 API Key / 模型可用性验证
+  - `test_dashscope_speed.py`：纯文本 vs 图片请求耗时对比
+
+### Fixed
+
+- **在线后端模型名**：`qwen-vl-flash` / `qwen3.7-max-2026-05-17`（不可用） → `qwen3.7-plus`
+- **API Key 兼容**：`sk-ws-H` 前缀 Key 不适用于 OpenAI 兼容 API
+
+### Verified
+
+- 本地 llama-cpp 后端（Qwen3-VL-8B-Q4_K_M，46 tok/s）：6 张测试图片全过
+- 在线 DashScope 后端（qwen3.7-plus）：describe + OCR 模板通过
+
+---
+
 ## 2026-08-22 — 测试覆盖 + 在线后端 mock
 
 ### Added
