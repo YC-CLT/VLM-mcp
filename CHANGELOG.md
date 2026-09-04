@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-03 — OCR 工具 + 本地引擎懒加载
+
+### Added
+
+- **`providers/ocr_provider.py`**：OCR Provider（RapidOCR ONNX），支持懒加载与 30s 延迟卸载
+- **`ocr_image` MCP 工具**：优先使用本地 OCR 提取图片文字，返回文字、坐标、置信度
+- **llama-server 懒启动**：首次调用 `llama-cpp` 后端时自动拉起，60s 延迟关闭
+- **`tests/test_ocr_provider.py`**：OCR Provider 单元测试（7 个用例）
+
+### Changed
+
+- **传输方式**：SSE (port 11432) → stdio
+- **`main.py`**：精简，移除 llama-server 启动/停止逻辑，仅保留 MCP 启动
+- **`server.py`**：`mcp.run_sse_async()` → `mcp.run_stdio_async()`
+- **`config.json`**：`llama-cpp` 默认 disabled，由懒加载自动管理
+
+### Fixed
+
+- **`openai_compat.py` 笔误**：`_disabled_backends.dadd()` → `.add()`
+- **测试挂起**：`test_provider.py` 中 mock `_ensure_llama_running` 避免真实子进程启动
+
 ## 2026-08-23 — 在线后端联调 + 诊断工具
 
 ### Added

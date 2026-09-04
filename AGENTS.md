@@ -10,12 +10,13 @@
 
 | 文件 | 作用 |
 |------|------|
-| `main.py` | 入口，启动 llama-server → 运行 MCP → 停止 |
-| `server.py` | MCP Server，6 个工具，SSE 传输 (端口 11432) |
+| `main.py` | 入口，纯启动脚本，启动 MCP |
+| `server.py` | MCP Server，7 个工具，stdio 传输 |
 | `config.py` | 所有常量 + `config.json` 加载 |
 | `config.json` | 敏感配置（API Key、模型路径），不入 git |
 | `llama_launcher.py` | llama-server 子进程生命周期（启/停/健康检查） |
-| `providers/openai_compat.py` | OpenAI 兼容 API 客户端（AsyncOpenAI） |
+| `providers/ocr_provider.py` | OCR Provider（RapidOCR 懒加载 + 延迟卸载） |
+| `providers/openai_compat.py` | OpenAI 兼容 API 客户端（AsyncOpenAI）+ llama 懒启动 |
 | `session_manager.py` | 会话 CRUD + 超时清理 + 满时驱逐 |
 | `cache.py` | L1 图片缓存（LRU）+ L2 响应缓存（LRU + TTL） |
 | `image_utils.py` | 图片源解析（路径/URL/Data URI/Base64 回退） |
@@ -80,3 +81,6 @@
 - **config 常量消费**：`config.py` 定义的常量必须在对应模块中实际使用，避免死代码
 - **config 热加载无效**：`config.py` 在 import 时加载 `config.json`，修改配置后必须重启服务端才能生效
 - **HTTP 403 不等价 Auth Error**：API 返回 403 可能是额度耗尽（`AllocationQuota.FreeTierOnly`）而非 Key 无效，provider 中勿将 401/403 统一按 Auth Error 禁用后端
+- **懒加载 Provider 测试需 mock 启动函数**：openai_compat 中 `_ensure_llama_running` 会启动真实子进程，测试中必须 patch 掉，否则挂起超时
+- **config.json 真实值影响测试**：`get_provider("llama-cpp")` 依赖 `config.BACKENDS["llama-cpp"]["enabled"]`，若真实配置为 `false` 则测试需 `patch.dict("config.BACKENDS", ...)` 覆盖
+- **`git add -A` 会删除文件**：提交时勿用 `-A`，会意外删除不在版本控制中的文件，应用 `git add <specific files>`
