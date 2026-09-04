@@ -26,20 +26,20 @@ VLM-based image understanding MCP Server. Supports local llama.cpp and online VL
 ### Architecture
 
 ```
-MCP Client (SSE :11432)
+MCP Client (stdio)
        │
        ▼
-  server.py ── tool layer (analyze_image / create_session / ...)
+  server.py ── tool layer (ocr_image / analyze_image / create_session / ...)
        │
        ├── session_manager.py ── session lifecycle
        ├── cache.py ── L1 image cache + L2 response cache
        ├── image_utils.py ── image parsing (path/URL/Base64)
        │
        ▼
-  providers/ ── OpenAI-compatible interface
+  providers/ ── OpenAI-compatible + OCR
        │
-       ├── llama-cpp (localhost:11433) ← auto-launched by llama_launcher.py
-       └── qwen-vl (dashscope API)
+       ├── openai_compat.py ── llama.cpp (lazy start) / online VLM
+       └── ocr_provider.py ── RapidOCR (lazy load, delayed unload)
 ```
 
 ### Quick Start
@@ -51,6 +51,7 @@ MCP Client (SSE :11432)
 | Python 3.11+ | Runtime |
 | [uv](https://github.com/astral-sh/uv) | Package manager |
 | [llama.cpp](https://github.com/ggerganov/llama.cpp) | Native binary (`llama-server`), CUDA build required |
+| [rapidocr-onnxruntime](https://github.com/RapidAI/RapidOCR) | OCR engine (auto-installed as dependency) |
 | Qwen3-VL-8B GGUF | Language model + vision projector |
 
 > **Note: This project uses the llama.cpp native binary (`llama-server`), NOT `llama-cpp-python`.** No Python bindings needed — just download the llama.cpp executable.
@@ -122,7 +123,7 @@ uv run main.py
 
 llama-server subprocess auto-starts and stops with MCP. No manual management needed.
 
-MCP SSE endpoint: `http://127.0.0.1:11432/sse`
+MCP stdio transport — configure in your MCP client's `mcpServers` config.
 
 > Run from any directory: `uv run --directory D:\CodeFile\VLM-mcp main.py`
 
@@ -145,6 +146,7 @@ Add to your MCP client configuration:
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
+| `ocr_image` | `image` | OCR text extraction (RapidOCR, offline, ms-level) |
 | `analyze_image` | `image`, `prompt`, `template`, `params`, `backend`, `session_id` | Analyze image with template & session support |
 | `create_session` | `backend` | Create multi-turn conversation session |
 | `close_session` | `session_id` | Close session |
@@ -226,7 +228,7 @@ Verify `server_exe` is executable and `model`/`mmproj` paths exist. Check `llama
 Invalid API key auto-disables the backend. Set a valid key and restart. Or set `"enabled": false` to skip.
 
 **Port conflict?**  
-MCP port 11432, llama-server port 11433. Change `llama.port` in `config.json` or the port in `server.py`.
+MCP uses stdio transport. llama-server uses port 11433 (configurable in `config.json`).
 
 ---
 
@@ -245,20 +247,20 @@ MCP port 11432, llama-server port 11433. Change `llama.port` in `config.json` or
 ## 架构
 
 ```
-MCP Client (SSE :11432)
+MCP Client (stdio)
        │
        ▼
-  server.py ── 工具层 (analyze_image / create_session / ...)
+  server.py ── 工具层 (ocr_image / analyze_image / create_session / ...)
        │
        ├── session_manager.py ── 会话生命周期
        ├── cache.py ── L1 图片缓存 + L2 响应缓存
        ├── image_utils.py ── 图片解析 (路径/URL/Base64)
        │
        ▼
-  providers/ ── OpenAI 兼容接口
+  providers/ ── OpenAI 兼容 + OCR
        │
-       ├── llama-cpp (localhost:11433) ← llama_launcher.py 自动启动
-       └── qwen-vl (dashscope API)
+       ├── openai_compat.py ── llama.cpp (懒启动) / 在线 VLM
+       └── ocr_provider.py ── RapidOCR (懒加载、延迟卸载)
 ```
 
 ## 快速开始
@@ -343,7 +345,7 @@ uv run main.py
 
 启动后会自动拉起 llama-server 子进程，MCP 退出时自动停止。无需手动管理 llama-server。
 
-MCP SSE 端点：`http://127.0.0.1:11432/sse`
+MCP stdio 传输 — 在 MCP 客户端 `mcpServers` 配置中设置。
 
 > 从任意目录运行：`uv run --directory D:\CodeFile\VLM-mcp main.py`
 
@@ -366,6 +368,7 @@ MCP SSE 端点：`http://127.0.0.1:11432/sse`
 
 | 工具 | 参数 | 说明 |
 |------|------|------|
+| `ocr_image` | `image` | OCR 文字提取（RapidOCR，离线毫秒级） |
 | `analyze_image` | `image`, `prompt`, `template`, `params`, `backend`, `session_id` | 分析图片，支持模板和会话 |
 | `create_session` | `backend` | 创建多轮对话会话 |
 | `close_session` | `session_id` | 关闭会话 |
@@ -447,7 +450,7 @@ uv run pytest tests/ -v
 API Key 无效时会自动禁用该后端，设好 Key 后重启即可恢复。也可手动设 `"enabled": false` 跳过。
 
 **端口被占用？**  
-MCP 端口 11432，llama-server 端口 11433。修改 `config.json` 中 `llama.port` 或 `server.py` 中端口号。
+MCP 使用 stdio 传输。llama-server 端口 11433（可在 `config.json` 中配置）。
 
 ## 许可
 
