@@ -1,8 +1,12 @@
+import asyncio
+import subprocess
+
 from openai import AsyncOpenAI
 
 from image_utils import ImageInput
 from providers.base import BaseProvider, VLMResponse
 import config
+import llama_launcher
 
 try:
     from logger import get_logger
@@ -34,6 +38,44 @@ class BackendUnavailableError(BackendError):
 
 _disabled_backends: set[str] = set()
 
+_llama_proc: subprocess.Popen | None = None
+_llama_unload_task: asyncio.Task | None = None
+_llama_running: bool = False
+_llama_lock = asyncio.Lock()
+
+
+async def _ensure_llama_running():
+    global _llama_proc, _llama_running
+    async with _llama_lock:
+        if _llama_running:
+            _cancel_llama_unload()
+            return
+        proc = await asyncio.to_thread(llama_launcher.start)
+        _llama_proc = proc
+        _llama_running = True
+        _cancel_llama_unload()
+
+
+def _cancel_llama_unload():
+    global _llama_unload_task
+    if _llama_unload_task and not _llama_unload_task.done():
+        _llama_unload_task.cancel()
+
+
+def _schedule_llama_unload():
+    global _llama_unload_task
+    _llama_unload_task = asyncio.create_task(_unload_llama())
+
+
+async def _unload_llama():
+    global _llama_proc, _llama_running
+    await asyncio.sleep(60)
+    async with _llama_lock:
+        if _llama_proc:
+            await asyncio.to_thread(llama_launcher.stop, _llama_proc)
+        _llama_proc = None
+        _llama_running = False
+
 
 class OpenAICompatProvider(BaseProvider):
     def __init__(self, backend_name: str):
@@ -45,7 +87,7 @@ class OpenAICompatProvider(BaseProvider):
             required.append("api_key")
         for field in required:
             if not cfg.get(field):
-                _disabled_backends.add(backend_name)
+                _disabled_backends.dadd(backend_name)
                 raise BackendDisabledError(
                     f"Backend '{backend_name}' is disabled: '{field}' is empty"
                 )
@@ -70,6 +112,8 @@ class OpenAICompatProvider(BaseProvider):
 
     async def _call_api(self, messages: list[dict]) -> VLMResponse:
         self._check_disabled()
+        if self._name == "llama-cpp":
+            await _ensure_llama_running()
         try:
             resp = await self._client.chat.completions.create(
                 model=self._model,
@@ -96,6 +140,9 @@ class OpenAICompatProvider(BaseProvider):
             raise BackendUnavailableError(
                 f"Backend '{self._name}' error: {e}"
             ) from e
+        finally:
+            if self._name == "llama-cpp":
+                _schedule_llama_unload()
 
     async def analyze(self, image: ImageInput, prompt: str) -> VLMResponse:
         message = {
