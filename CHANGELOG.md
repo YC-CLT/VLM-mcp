@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-04 — Skill 文档优化 + 测试修复
+
+### Changed
+
+- **`skills/using-vlm-mcp/SKILL.md`**：按 writing-skills 方法论优化
+  - Description 改为纯触发条件（去 workflow summary）
+  - 快速参考表压缩为只列 args 差异
+  - 自查清单改为 Red Flags 自检格式
+  - 强化本地 OCR 优先规则
+
 ## 2026-09-04 — 测试修复 + 可测试性改进
 
 ### Fixed

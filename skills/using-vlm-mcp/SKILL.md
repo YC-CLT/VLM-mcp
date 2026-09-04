@@ -1,6 +1,6 @@
 ---
 name: using-vlm-mcp
-description: Use when images are provided and need analysis, description, OCR, chart interpretation, translation, or visual Q&A via VLM-mcp MCP tools
+description: Use when user provides images requiring VLM-based processing via VLM-mcp
 ---
 
 # Using VLM-MCP
@@ -13,57 +13,32 @@ description: Use when images are provided and need analysis, description, OCR, c
 
 用户提供图片并要求：描述、分析、OCR 提取文字、图表解读、翻译图中文字、基于图片问答。
 
+**OCR 优先用 `ocr_image`**。**不要**优先用 `analyze_image` + `template: "ocr"` ，效果不好再换。
+
 **不用此 skill 的场景：** 纯文本分析（无图片）、非 VLM-mcp 工具的图片处理。
-
-## 启动 VLM-MCP
-
-若VLM-MCP 服务未运行，先在后台启动服务：
-
-```cmd
-VLM-mcp
-```
-
-启动后（约 4~8 秒）重试 MCP 调用即可。
-
-## 决策流程
-
-```mermaid
-graph TD
-    A[收到图片请求] --> B{已有 session?}
-    B -->|无| C[analyze_image 必传 image]
-    B -->|有| D{需要换后端?}
-    D -->|是| E[close_session → 新建 session]
-    D -->|否| F[analyze_image 可纯文本追问]
-    C --> G{用完?}
-    F --> G
-    G -->|是| H[close_session]
-```
-
-## 可用工具
-
-| 工具 | 用途 |
-|------|------|
-| `analyze_image` | 传图片 + 问题/模板，返回分析结果 |
-| `create_session` | 创建会话，用于多轮追问 |
-| `close_session` | 关闭会话 |
-| `list_sessions` | 查看当前活跃会话 |
-| `list_backends_tool` | 查看可用模型后端 |
-| `list_templates` | 查看内置 prompt 模板 |
 
 ## 快速参考
 
-所有工具通过 `run_mcp(server_name="vlm-mcp", tool_name="...", args={...})` 调用：
+调用方式：`run_mcp(server_name="vlm-mcp", tool_name="工具名", args={...})`。
+`image` 支持三种格式：**本地绝对路径**（如 `D:/images/photo.png`）、**URL**（`https://...`）、**base64 data URI**。
 
-| 操作 | 调用方式 |
-|------|----------|
-| 描述图片 | `run_mcp("vlm-mcp", "analyze_image", args={"image": "x.png", "prompt": "描述这张图片"})` |
-| OCR 提取 | `run_mcp("vlm-mcp", "analyze_image", args={"image": "x.png", "template": "ocr"})` |
-| 图表解读 | `run_mcp("vlm-mcp", "analyze_image", args={"image": "x.png", "template": "chart"})` |
-| 翻译图中文字 | `run_mcp("vlm-mcp", "analyze_image", args={"image": "x.png", "template": "translate", "params": {"target_lang": "英文"}})` |
-| 图片问答 | `run_mcp("vlm-mcp", "analyze_image", args={"image": "x.png", "template": "qa", "params": {"question": "..."}})` |
-| 多轮追问 | `create_session` → `analyze_image(..., session_id="x")` → `close_session("x")`（详见下方多轮对话） |
-| 查看活跃会话 | `run_mcp("vlm-mcp", "list_sessions")` |
-| 查看可用后端 | `run_mcp("vlm-mcp", "list_backends_tool")` |
+| 工具 | 操作 | args |
+|------|------|------|
+| `ocr_image` | 本地 OCR | `image` → `[{text, box, confidence}, ...]` |
+| `analyze_image` | 自由描述 | `image`, `prompt` |
+| `analyze_image` | 模板描述 | `image`, `template: "describe"` |
+| `analyze_image` | 模板 OCR | `image`, `template: "ocr"` |
+| `analyze_image` | 图表解读 | `image`, `template: "chart"` |
+| `analyze_image` | 翻译图中文字 | `image`, `template: "translate"`, `params: {target_lang}` |
+| `analyze_image` | 图片问答 | `image`, `template: "qa"`, `params: {question}` |
+| `analyze_image` | 指定后端 | `image`, `prompt`, `backend` |
+| `create_session` | 创建会话 | `backend`（可选）→ `{session_id}` |
+| `close_session` | 关闭会话 | `session_id` |
+| `list_sessions` | 活跃会话 | 无 |
+| `list_backends_tool` | 可用后端 | 无 |
+| `list_templates` | 可用模板 | 无 |
+
+`analyze_image` 返回：`{text, model, tokens_used, cache_hit, session_id}`。
 
 ## 使用模式
 
@@ -72,43 +47,28 @@ graph TD
 
 ### 多轮对话
 ```python
-# 1. 创建会话
-run_mcp("vlm-mcp", "create_session")                               # → {"session_id": "x"}
-
-# 2. 首轮必须带图
-run_mcp("vlm-mcp", "analyze_image", args={
-    "image": "doc.png", "prompt": "总结本文", "session_id": "x"
-})
-
-# 3. 追问可纯文本（不传 image）
-run_mcp("vlm-mcp", "analyze_image", args={
-    "prompt": "第三节说了什么？", "session_id": "x"
-})
-
-# 4. 任意轮可带新图
-run_mcp("vlm-mcp", "analyze_image", args={
-    "image": "another.png", "prompt": "这张呢？", "session_id": "x"
-})
-
-# 5. 用完必须关
-run_mcp("vlm-mcp", "close_session", args={"session_id": "x"})
+s = run_mcp("vlm-mcp", "create_session", args={"backend": "dashscope"})  # 可选 backend
+sid = s["session_id"]
+run_mcp("vlm-mcp", "analyze_image", args={"image": "doc.png", "prompt": "总结", "session_id": sid})
+run_mcp("vlm-mcp", "analyze_image", args={"prompt": "第三节？", "session_id": sid})        # 追问可不传图
+run_mcp("vlm-mcp", "close_session", args={"session_id": sid})                              # 用完必须关
 ```
 
 ## 常见错误
 
 | 错误 | 现象 | 正确做法 |
 |------|------|----------|
-| 无会话忘传 `image` | `analyze_image(prompt="描述")` 报错 | 无会话时 `image` 必传 |
-| 不关会话 | 占槽位，后续创建失败 | 用完 `close_session(session_id)`；若已占槽，先用 `list_sessions` 查孤儿会话再逐一关闭 |
+| 无会话忘传 `image` | `INVALID_PARAMS`: `image is required` | 无会话时 `image` 必传 |
+| 不关会话 | 占槽位（每后端最多 5 个），后续创建报 `SESSION_FULL` | 用完 `close_session`；若已占满，`list_sessions` 查孤儿 → 逐一 `close_session` |
 | 同时传 `template` 和 `prompt` | `template` 优先，`prompt` 被忽略 | 只传其中一个 |
-| 会话内换后端 | session 创建时绑定后端，无法切换 | 新建 session 换后端 |
-| `image` 用相对路径 | MCP 服务端找不到文件 | 使用绝对路径（如 `D:/images/photo.png`），或确认文件在 MCP 服务端工作目录下 |
+| 会话内换后端 | `SESSION_BACKEND_MISMATCH` | 新建 session 换后端 |
+| `image` 用相对路径 | `IMAGE_NOT_FOUND` | 用绝对路径、URL 或 base64 |
+| 用 `analyze_image` + `template: "ocr"` 做简单提取 | 浪费在线 API 额度、延迟高 | 优先用 `ocr_image` |
+| 模板名拼错 | `TEMPLATE_NOT_FOUND` | `list_templates` 查看可用模板名 |
+| 忘传模板必填参数 | `INVALID_PARAMS`: `Missing required param` | `list_templates` 查看模板所需参数 |
 
-## 自查清单
+## Red Flags
 
-每次调用 `analyze_image` 前确认：
-- [ ] 无 session 时是否传了 `image`？
-- [ ] 是否同时传了 `template` 和 `prompt`（只应传一个）？
-- [ ] `image` 是否用了绝对路径？
-- [ ] 换后端时是否先关了旧 session？
-- [ ] 用完 session 是否调了 `close_session`？
+- [ ] 创建了 session 但用完没关？→ 调 `close_session`
+- [ ] `image` 用了相对路径？→ 换绝对路径 / URL / base64
+- [ ] 同时传了 `template` 和 `prompt`？→ 只传一个，`template` 优先
