@@ -16,6 +16,7 @@ from image_utils import (
 )
 from logger import get_logger
 from providers import get_provider, list_backends
+from providers.ocr_provider import ocr
 from providers.openai_compat import (
     BackendNotFoundError,
     BackendAuthError,
@@ -148,7 +149,7 @@ async def analyze_image(
                 }
             else:
                 result = await provider.analyze(img_input, prompt)
-                if img_bytes is not None and config.CACHE_ENABLED:
+                if img_bytes is not None and dconfig.CACHE_ENABLED:
                     await response_cache.set(
                         img_bytes, prompt, backend,
                         {"text": result.text, "tokens_used": result.tokens_used, "model": result.model},
@@ -221,6 +222,27 @@ async def list_templates() -> dict:
             for name, t in config.TEMPLATES.items()
         ]
     }
+
+
+@mcp.tool(description="OCR 提取图片文字，优先使用。返回文字、位置坐标、置信度。")
+async def ocr_image(image: str) -> list:
+    try:
+        img_input = resolve_image(image)
+    except ImageNotFoundError as e:
+        return {"error": "IMAGE_NOT_FOUND", "detail": str(e)}
+    except ImageDownloadError as e:
+        return {"error": "IMAGE_DOWNLOAD_FAILED", "detail": str(e)}
+    except ImageInvalidFormatError as e:
+        return {"error": "IMAGE_INVALID_FORMAT", "detail": str(e)}
+    except ImageTooLargeError as e:
+        return {"error": "IMAGE_TOO_LARGE", "detail": str(e)}
+    except ImageInvalidBase64Error as e:
+        return {"error": "IMAGE_INVALID_BASE64", "detail": str(e)}
+    img_bytes = base64.b64decode(img_input.data_uri.split(",", 1)[1])
+    try:
+        return await ocr.recognize(img_bytes)
+    except Exception as e:
+        return {"error": "OCR_ERROR", "detail": str(e)}
 
 
 def run_server():
