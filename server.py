@@ -248,9 +248,9 @@ async def ocr_image(image: str) -> list:
 def run_server():
     async def _run():
         session_manager.start_cleanup_task()
-        logger.info("VLM-MCP server starting on port 11432")
+        logger.info("VLM-MCP server starting (stdio)")
         try:
-            await mcp.run_sse_async(host="127.0.0.1", port=11432)
+            await mcp.run_stdio_async()
         finally:
             session_manager.stop_cleanup_task()
 
