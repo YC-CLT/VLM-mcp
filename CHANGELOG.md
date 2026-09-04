@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-04 — 测试修复 + 可测试性改进
+
+### Fixed
+
+- **`test_unload_after_delay` 失败**：生产代码 `_schedule_unload` 硬编码 30s 延迟，测试无法控制 → `OCRProvider.__init__` 加 `unload_delay` 参数（默认 30s），测试实例传入 0.1s
+
 ## 2026-09-03 — OCR 工具 + 本地引擎懒加载
 
 ### Added

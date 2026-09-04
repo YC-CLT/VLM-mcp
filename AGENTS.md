@@ -81,6 +81,7 @@
 - **config 常量消费**：`config.py` 定义的常量必须在对应模块中实际使用，避免死代码
 - **config 热加载无效**：`config.py` 在 import 时加载 `config.json`，修改配置后必须重启服务端才能生效
 - **HTTP 403 不等价 Auth Error**：API 返回 403 可能是额度耗尽（`AllocationQuota.FreeTierOnly`）而非 Key 无效，provider 中勿将 401/403 统一按 Auth Error 禁用后端
+- **延迟/超时参数可配置化**：类中硬编码的延迟（如 `asyncio.sleep(30)`）导致测试无法控制 → 加 `__init__` 参数设默认值，测试注入短延迟
 - **懒加载 Provider 测试需 mock 启动函数**：openai_compat 中 `_ensure_llama_running` 会启动真实子进程，测试中必须 patch 掉，否则挂起超时
 - **config.json 真实值影响测试**：`get_provider("llama-cpp")` 依赖 `config.BACKENDS["llama-cpp"]["enabled"]`，若真实配置为 `false` 则测试需 `patch.dict("config.BACKENDS", ...)` 覆盖
 - **`git add -A` 会删除文件**：提交时勿用 `-A`，会意外删除不在版本控制中的文件，应用 `git add <specific files>`
