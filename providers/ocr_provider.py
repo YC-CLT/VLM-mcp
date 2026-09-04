@@ -4,8 +4,9 @@ from rapidocr_onnxruntime import RapidOCR
 
 
 class OCRProvider:
-    def __init__(self):
+    def __init__(self, unload_delay: float = 30):
         self._ocr = None
+        self._unload_delay = unload_delay
         self._unload_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
@@ -23,7 +24,7 @@ class OCRProvider:
             self._unload_task.cancel()
 
     def _schedule_unload(self):
-        self._unload_task = asyncio.create_task(self._unload_after(30))
+        self._unload_task = asyncio.create_task(self._unload_after(self._unload_delay))
 
     async def _unload_after(self, delay: float):
         await asyncio.sleep(delay)

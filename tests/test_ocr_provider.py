@@ -18,7 +18,7 @@ class TestOCRProvider:
         fake_ocr = MagicMock()
         fake_ocr.return_value = ([], None)
         with patch("providers.ocr_provider.RapidOCR", return_value=fake_ocr):
-            provider = OCRProvider()
+            provider = OCRProvider(unload_delay=0.1)
             assert provider._ocr is None
             result = await provider.recognize(b"fake_bytes")
             assert provider._ocr is fake_ocr
@@ -29,7 +29,7 @@ class TestOCRProvider:
         fake_ocr = MagicMock()
         fake_ocr.return_value = ([], None)
         with patch("providers.ocr_provider.RapidOCR", return_value=fake_ocr):
-            provider = OCRProvider()
+            provider = OCRProvider(unload_delay=0.1)
             await provider.recognize(b"first")
             await provider.recognize(b"second")
             assert fake_ocr.call_count == 2
@@ -43,7 +43,7 @@ class TestOCRProvider:
         fake_ocr = MagicMock()
         fake_ocr.return_value = (fake_result, None)
         with patch("providers.ocr_provider.RapidOCR", return_value=fake_ocr):
-            provider = OCRProvider()
+            provider = OCRProvider(unload_delay=0.1)
             result = await provider.recognize(b"img")
             assert result == fake_result
 
@@ -52,7 +52,7 @@ class TestOCRProvider:
         fake_ocr = MagicMock()
         fake_ocr.return_value = ([], None)
         with patch("providers.ocr_provider.RapidOCR", return_value=fake_ocr):
-            provider = OCRProvider()
+            provider = OCRProvider(unload_delay=0.1)
             await provider.recognize(b"test")
             assert provider._ocr is not None
             await asyncio.sleep(0.2)
@@ -70,7 +70,7 @@ class TestOCRProvider:
         fake_ocr = MagicMock()
         fake_ocr.side_effect = _fake_ocr
         with patch("providers.ocr_provider.RapidOCR", return_value=fake_ocr):
-            provider = OCRProvider()
+            provider = OCRProvider(unload_delay=0.1)
             await asyncio.gather(
                 provider.recognize(b"a"),
                 provider.recognize(b"b"),
@@ -84,7 +84,7 @@ class TestOCRProvider:
         fake_ocr = MagicMock()
         fake_ocr.return_value = ([], None)
         with patch("providers.ocr_provider.RapidOCR", return_value=fake_ocr):
-            provider = OCRProvider()
+            provider = OCRProvider(unload_delay=0.1)
             await provider.recognize(b"t1")
             await asyncio.sleep(0.01)
             await provider.recognize(b"t2")
