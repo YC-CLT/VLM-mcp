@@ -42,8 +42,15 @@ class TestProvider:
         _disabled_backends.clear()
 
     def test_get_provider_llama(self):
-        provider = get_provider("llama-cpp")
-        assert provider._name == "llama-cpp"
+        with patch.dict("config.BACKENDS", {
+            "llama-cpp": {
+                "enabled": True,
+                "base_url": "http://127.0.0.1:11433/v1",
+                "model_name": "test-model",
+            }
+        }):
+            provider = get_provider("llama-cpp")
+            assert provider._name == "llama-cpp"
 
     def test_get_provider_not_found(self):
         with pytest.raises(BackendNotFoundError):
@@ -76,16 +83,25 @@ class TestProvider:
     @pytest.mark.asyncio
     async def test_analyze_mock(self):
         fake_resp = _mock_chat_response(text="a cat", tokens=42)
-        with patch("providers.openai_compat.AsyncOpenAI") as mock_client:
-            mock_client.return_value.chat.completions.create = AsyncMock(
-                return_value=fake_resp
-            )
-            provider = get_provider("llama-cpp")
-            image = _make_image()
-            result = await provider.analyze(image, "describe")
-            assert result.text == "a cat"
-            assert result.tokens_used == 42
-            assert result.model == "test-model"
+        with patch.dict("config.BACKENDS", {
+            "llama-cpp": {
+                "enabled": True,
+                "base_url": "http://127.0.0.1:11433/v1",
+                "model_name": "test-model",
+            }
+        }):
+            with patch("providers.openai_compat._ensure_llama_running", new_callable=AsyncMock):
+                with patch("providers.openai_compat._schedule_llama_unload"):
+                    with patch("providers.openai_compat.AsyncOpenAI") as mock_client:
+                        mock_client.return_value.chat.completions.create = AsyncMock(
+                            return_value=fake_resp
+                        )
+                        provider = get_provider("llama-cpp")
+                        image = _make_image()
+                        result = await provider.analyze(image, "describe")
+                        assert result.text == "a cat"
+                        assert result.tokens_used == 42
+                        assert result.model == "test-model"
 
     @pytest.mark.asyncio
     async def test_analyze_auth_error(self):
@@ -94,14 +110,23 @@ class TestProvider:
         exc = Exception("unauthorized")
         exc.response = fake_resp
 
-        with patch("providers.openai_compat.AsyncOpenAI") as mock_client:
-            mock_client.return_value.chat.completions.create = AsyncMock(
-                side_effect=exc
-            )
-            provider = get_provider("llama-cpp")
-            with pytest.raises(BackendAuthError):
-                await provider.analyze(_make_image(), "describe")
-            assert "llama-cpp" in _disabled_backends
+        with patch.dict("config.BACKENDS", {
+            "llama-cpp": {
+                "enabled": True,
+                "base_url": "http://127.0.0.1:11433/v1",
+                "model_name": "test-model",
+            }
+        }):
+            with patch("providers.openai_compat._ensure_llama_running", new_callable=AsyncMock):
+                with patch("providers.openai_compat._schedule_llama_unload"):
+                    with patch("providers.openai_compat.AsyncOpenAI") as mock_client:
+                        mock_client.return_value.chat.completions.create = AsyncMock(
+                            side_effect=exc
+                        )
+                        provider = get_provider("llama-cpp")
+                        with pytest.raises(BackendAuthError):
+                            await provider.analyze(_make_image(), "describe")
+                        assert "llama-cpp" in _disabled_backends
 
     @pytest.mark.asyncio
     async def test_analyze_500_error(self):
@@ -110,13 +135,22 @@ class TestProvider:
         exc = Exception("server error")
         exc.response = fake_resp
 
-        with patch("providers.openai_compat.AsyncOpenAI") as mock_client:
-            mock_client.return_value.chat.completions.create = AsyncMock(
-                side_effect=exc
-            )
-            provider = get_provider("llama-cpp")
-            with pytest.raises(BackendUnavailableError):
-                await provider.analyze(_make_image(), "describe")
+        with patch.dict("config.BACKENDS", {
+            "llama-cpp": {
+                "enabled": True,
+                "base_url": "http://127.0.0.1:11433/v1",
+                "model_name": "test-model",
+            }
+        }):
+            with patch("providers.openai_compat._ensure_llama_running", new_callable=AsyncMock):
+                with patch("providers.openai_compat._schedule_llama_unload"):
+                    with patch("providers.openai_compat.AsyncOpenAI") as mock_client:
+                        mock_client.return_value.chat.completions.create = AsyncMock(
+                            side_effect=exc
+                        )
+                        provider = get_provider("llama-cpp")
+                        with pytest.raises(BackendUnavailableError):
+                            await provider.analyze(_make_image(), "describe")
 
     def test_disable_backend(self):
         disable_backend("llama-cpp")

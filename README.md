@@ -135,8 +135,9 @@ Add to your MCP client configuration:
 {
   "mcpServers": {
     "vlm-mcp": {
-      "type": "sse",
-      "url": "http://127.0.0.1:11432/sse"
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/VLM-mcp", "main.py"]
     }
   }
 }
@@ -357,8 +358,9 @@ MCP stdio 传输 — 在 MCP 客户端 `mcpServers` 配置中设置。
 {
   "mcpServers": {
     "vlm-mcp": {
-      "type": "sse",
-      "url": "http://127.0.0.1:11432/sse"
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/VLM-mcp", "main.py"]
     }
   }
 }

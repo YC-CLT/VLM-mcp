@@ -15,6 +15,16 @@ description: Use when images are provided and need analysis, description, OCR, c
 
 **不用此 skill 的场景：** 纯文本分析（无图片）、非 VLM-mcp 工具的图片处理。
 
+## 启动 VLM-MCP
+
+若VLM-MCP 服务未运行，先在后台启动服务：
+
+```cmd
+VLM-mcp
+```
+
+启动后（约 4~8 秒）重试 MCP 调用即可。
+
 ## 决策流程
 
 ```mermaid

@@ -1,436 +1,309 @@
-# llama 生态调研：作为后端推理引擎的用法
+# llama.cpp Server 调研：与 VLM-mcp 项目集成
 
 > 调研日期: 2026-08-21
-> 调研工具: wet-mcp (download + extract), 原生 websearch
+> 仓库: [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) (125k stars)
+> 调研工具: wet-mcp (extract + download), 代码阅读
 
 ---
 
-## 背景
+## 1. 背景
 
-需要将 llama 系列项目作为 VLM-mcp 的后端推理引擎之一。调研覆盖三个核心项目：**llama.cpp**（底层引擎）、**Ollama**（用户友好封装）、**llama-cpp-python**（Python 绑定），重点关注 API 用法和集成方式。
+VLM-mcp 是一个 MCP Server，通过 OpenAI 兼容 API 连接 llama.cpp server 提供视觉语言模型推理能力。当前版本已实现子进程生命周期管理、健康检查、会话管理、图片缓存等核心功能。
 
----
-
-## 核心发现
-
-### 一、三者关系与定位
-
-```
-llama.cpp (C/C++ 引擎)
-  ├── llama-cpp-python (Python 绑定，直接调用 C API)
-  │     └── 自带 OpenAI 兼容 HTTP Server
-  ├── llama-server (llama.cpp 内置 HTTP Server)
-  │     └── OpenAI + Anthropic 双协议兼容
-  └── Ollama (独立项目，底层基于 llama.cpp)
-        └── 自有 REST API + OpenAI 兼容 API
-```
-
-| 维度 | llama.cpp (server) | Ollama | llama-cpp-python |
-|------|-------------------|--------|-----------------|
-| **语言** | C/C++ | Go | Python |
-| **Stars** | 125k | 极多 | 9k+ |
-| **安装难度** | 需编译 | 一键安装脚本 | `pip install` |
-| **模型管理** | 手动下载 / `-hf` 自动拉取 | 内置 pull/push/create | 手动下载 / `from_pretrained` |
-| **API 协议** | OpenAI + Anthropic | 自有 REST + OpenAI 兼容 | OpenAI 兼容 |
-| **默认端口** | 8080 | 11434 | 8000 |
-| **GPU 支持** | CUDA/Metal/Vulkan/HIP/SYCL | 同 llama.cpp | 同 llama.cpp + 预编译 wheel |
-| **多模态** | 原生支持 | 支持 (llava 等) | 支持 (llava 等) |
-| **Function Calling** | 原生支持 | 支持 | 原生支持 |
-| **流式输出** | SSE | SSE | SSE |
-| **并发** | Continuous Batching | 有限 | 有限 |
-| **适合场景** | 生产级高并发 | 开发/个人使用 | Python 项目内嵌 |
+本次调研聚焦两方面：
+- 已实现部分的**现状核对**（参数、API 调用是否正确）
+- 未利用的**新特性**（Reasoning、Token 预算、MCP 工具等）
 
 ---
 
-### 二、llama.cpp Server — 最推荐作为后端
+## 2. 当前集成架构
 
-**仓库**: [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp)
-
-#### 2.1 快速启动
-
-```bash
-# 方式1: 一行拉起，自动从 HuggingFace 下载模型
-llama serve -hf ggml-org/Qwen3.5-0.8B-GGUF
-
-# 方式2: 指定本地模型文件
-llama serve -m ./models/llama-3-8b-q4.gguf
-
-# 方式3: 带 GPU 加速
-llama serve -m ./models/llama-3-8b-q4.gguf -ngl 99
-
-# 方式4: 生产级配置
-llama serve \
-  -m ./models/llama-3-8b-q4.gguf \
-  -ngl 99 \
-  -c 8192 \           # context size
-  -np 4 \             # 并发 slot 数
-  --host 0.0.0.0 \    # 监听所有网卡
-  --port 8080 \
-  --api-key sk-xxx     # API 鉴权
+```
+main.py
+  ├── llama_launcher.py  ──→  subprocess: llama-server (端口 11433)
+  │     ├── 健康检查: GET /health
+  │     ├── 模型预热: POST /v1/chat/completions (max_tokens=1)
+  │     └── 生命周期: atexit 注册 stop
+  │
+  └── server.py (MCP Server, 端口 11432)
+        └── providers/openai_compat.py
+              └── AsyncOpenAI → POST /v1/chat/completions
 ```
 
-#### 2.2 OpenAI 兼容 API（核心接口）
+### 2.1 当前启动参数
 
-Server 默认在 `http://localhost:8080` 提供以下端点：
+当前 `llama_launcher.py` 构建的命令行：
 
-| 端点 | 说明 |
-|------|------|
-| `GET /health` | 健康检查 |
-| `GET /v1/models` | 模型信息 |
-| `POST /v1/completions` | OpenAI 兼容文本补全 |
-| `POST /v1/chat/completions` | OpenAI 兼容对话补全 |
-| `POST /v1/chat/completions/control` | 实时控制推理（如提前结束 reasoning） |
-| `POST /v1/responses` | OpenAI 兼容 Responses API |
-| `POST /v1/embeddings` | OpenAI 兼容嵌入 |
-| `POST /completion` | llama.cpp 原生补全（更多参数） |
-| `POST /tokenize` | 分词 |
-| `POST /embeddings` | 非 OAI 兼容嵌入 |
+```
+llama-server
+  -m <model.gguf>
+  --mmproj <mmproj.gguf>
+  --host 127.0.0.1
+  --port 11433
+  -ngl 99
+  -c 8192
+  -n 16384
+  --temp 0.7
+  --top-k 20
+  --top-p 0.8
+  --repeat-penalty 1.0
+  --presence-penalty 1.5
+  --flash-attn auto
+  -ctk f16
+  -ctv f16
+  -np 1
+  --image-min-tokens 1024
+  --no-webui
+```
 
-**关键特性**:
-- **Anthropic Messages API 兼容**: 也支持 Anthropic 协议
-- **内置 Web UI**: 访问 `http://localhost:8080` 即可使用
-- **MCP 工具**: 内置 `read_file`, `write_file`, `exec_shell_command` 等 agent 工具（`--tools all`）
-- **MCP Server 代理**: 支持 Cursor 兼容的 MCP server 配置（`--mcp-servers-config`）
-- **多模态**: 支持图片、音频、视频输入
-- **Function Calling**: 原生 tool call 支持
-- **JSON Schema**: 约束输出格式
-- **Reasoning**: 支持 DeepSeek 风格 reasoning_content
-- **Continuous Batching**: 多用户并发推理
-- **API Key 鉴权**: `--api-key` 或 `--api-key-file`
+### 2.2 当前 API 调用
 
-#### 2.3 Python 客户端示例
+`providers/openai_compat.py` 通过 `AsyncOpenAI` 调用：
 
 ```python
-import openai
-
-client = openai.OpenAI(
-    base_url="http://localhost:8080/v1",
-    api_key="sk-no-key-required"
-)
-
-# Chat Completion
-response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello!"}
-    ]
-)
-print(response.choices[0].message.content)
-
-# 多模态（图片理解）
-response = client.chat.completions.create(
-    model="gpt-4-vision",
+# 图片分析（单轮）
+resp = await client.chat.completions.create(
+    model=self._model,
     messages=[{
         "role": "user",
         "content": [
-            {"type": "text", "text": "What's in this image?"},
-            {"type": "image_url", "image_url": {"url": "https://example.com/photo.jpg"}}
-        ]
-    }]
-)
-```
-
-#### 2.4 curl 示例
-
-```bash
-# 对话补全
-curl http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer no-key" \
-  -d '{
-    "model": "gpt-3.5-turbo",
-    "messages": [
-      {"role": "user", "content": "Say hello"}
-    ]
-  }'
-
-# 流式输出
-curl http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-3.5-turbo",
-    "messages": [{"role": "user", "content": "Tell me a story"}],
-    "stream": true
-  }'
-```
-
----
-
-### 三、Ollama — 最易用的封装
-
-**仓库**: [ollama/ollama](https://github.com/ollama/ollama)
-
-#### 3.1 安装 & 启动
-
-```bash
-# Linux/macOS
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Windows
-irm https://ollama.com/install.ps1 | iex
-
-# 拉取并运行模型
-ollama run llama3.2
-ollama pull gemma4
-```
-
-#### 3.2 自有 REST API（localhost:11434）
-
-| 端点 | 说明 |
-|------|------|
-| `POST /api/generate` | 文本生成（自有格式） |
-| `POST /api/chat` | 对话补全（自有格式） |
-| `POST /api/embed` / `POST /api/embeddings` | 嵌入向量 |
-| `GET /api/tags` | 列出本地模型 |
-| `POST /api/show` | 模型详情 |
-| `POST /api/pull` | 拉取模型 |
-| `POST /api/push` | 推送模型 |
-| `POST /api/create` | 创建模型 |
-| `POST /api/copy` | 复制模型 |
-| `DELETE /api/delete` | 删除模型 |
-| `GET /api/ps` | 运行中的模型 |
-| `GET /api/version` | 版本 |
-
-#### 3.3 自有 API 调用示例
-
-```bash
-# /api/chat (自有格式)
-curl http://localhost:11434/api/chat -d '{
-  "model": "llama3.2",
-  "messages": [{"role": "user", "content": "Why is the sky blue?"}],
-  "stream": false
-}'
-
-# /api/generate (自有格式)
-curl http://localhost:11434/api/generate -d '{
-  "model": "llama3.2",
-  "prompt": "Why is the sky blue?",
-  "stream": false
-}'
-```
-
-#### 3.4 多模态 / 图片
-
-```bash
-curl http://localhost:11434/api/generate -d '{
-  "model": "llava",
-  "prompt": "What is in this picture?",
-  "stream": false,
-  "images": ["<base64-encoded-image>"]
-}'
-```
-
-#### 3.5 Structured Output / JSON Mode
-
-```bash
-curl http://localhost:11434/api/chat -d '{
-  "model": "llama3.1",
-  "messages": [{"role": "user", "content": "Return JSON with age and availability"}],
-  "stream": false,
-  "format": {
-    "type": "object",
-    "properties": {
-      "age": {"type": "integer"},
-      "available": {"type": "boolean"}
-    },
-    "required": ["age", "available"]
-  }
-}'
-```
-
-#### 3.6 与 llama.cpp 的对比
-
-| 特性 | Ollama | llama.cpp server |
-|------|--------|-----------------|
-| 安装 | 一键脚本 | 需编译 |
-| 模型管理 | 内置 pull/push | 手动或 `-hf` 自动 |
-| API 协议 | 自有 + OpenAI 兼容 | OpenAI + Anthropic |
-| 模型库 | ollama.com/library | 无（需 HuggingFace） |
-| 并发 | 较弱 | Continuous Batching |
-| 生产就绪 | 个人/开发 | 生产级 |
-| Agent 工具 | 无 | 内置 MCP 工具 |
-
----
-
-### 四、llama-cpp-python — Python 项目内嵌方案
-
-**仓库**: [abetlen/llama-cpp-python](https://github.com/abetlen/llama-cpp-python)
-
-#### 4.1 安装
-
-```bash
-# CPU 版本
-pip install llama-cpp-python
-
-# CUDA 预编译版本
-pip install llama-cpp-python \
-  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
-
-# Metal (Apple Silicon) 预编译
-pip install llama-cpp-python \
-  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
-
-# 从源码编译（自定义后端）
-CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python
-```
-
-#### 4.2 内嵌 Python 用法（进程内推理）
-
-```python
-from llama_cpp import Llama
-
-# 加载模型
-llm = Llama(
-    model_path="./models/llama-3-8b-q4.gguf",
-    n_ctx=2048,        # context window
-    n_gpu_layers=-1,   # -1 = 全部 GPU 加速
-    verbose=False
-)
-
-# 文本补全
-output = llm(
-    "Q: Name the planets in the solar system? A: ",
-    max_tokens=32,
-    stop=["Q:", "\n"],
-    echo=True
-)
-print(output["choices"][0]["text"])
-
-# Chat Completion
-response = llm.create_chat_completion(
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello!"}
-    ]
-)
-print(response["choices"][0]["message"]["content"])
-
-# JSON Schema 约束输出
-response = llm.create_chat_completion(
-    messages=[
-        {"role": "user", "content": "Who won the world series in 2020"}
-    ],
-    response_format={
-        "type": "json_object",
-        "schema": {
-            "type": "object",
-            "properties": {"team_name": {"type": "string"}},
-            "required": ["team_name"]
-        }
-    }
-)
-
-# Function Calling
-response = llm.create_chat_completion(
-    messages=[{"role": "user", "content": "Extract: Jason is 25 years old"}],
-    tools=[{
-        "type": "function",
-        "function": {
-            "name": "UserDetail",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "age": {"type": "integer"}
-                },
-                "required": ["name", "age"]
-            }
-        }
+            {"type": "image_url", "image_url": {"url": image.data_uri}},  # data:image/...;base64,...
+            {"type": "text", "text": prompt},
+        ],
     }],
-    tool_choice={"type": "function", "function": {"name": "UserDetail"}}
+    stream=False,
 )
 
-# 从 HuggingFace 直接拉取
-llm = Llama.from_pretrained(
-    repo_id="lmstudio-community/Qwen3.5-0.8B-GGUF",
-    filename="*Q8_0.gguf",
-    verbose=False
+# 会话对话（多轮）
+resp = await client.chat.completions.create(
+    model=self._model,
+    messages=session.messages,  # 累积的 message 列表
+    stream=False,
 )
-```
-
-#### 4.3 多模态用法
-
-```python
-from llama_cpp import Llama
-from llama_cpp.llama_chat_format import Llava15ChatHandler
-
-chat_handler = Llava15ChatHandler(clip_model_path="path/to/mmproj.bin")
-llm = Llama(
-    model_path="./path/to/llava-model.gguf",
-    chat_handler=chat_handler,
-    n_ctx=2048
-)
-
-llm.create_chat_completion(
-    messages=[{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "What's in this image?"},
-            {"type": "image_url", "image_url": {"url": "https://example.com/photo.jpg"}}
-        ]
-    }]
-)
-```
-
-#### 4.4 自带 OpenAI 兼容 Server
-
-```bash
-# 启动 OpenAI 兼容 Server
-python -m llama_cpp.server \
-  --model ./models/llama-3-8b-q4.gguf \
-  --n_gpu_layers -1 \
-  --host 0.0.0.0 \
-  --port 8000
-```
-
-然后使用标准 OpenAI SDK 连接：
-```python
-import openai
-client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="sk-xxx")
 ```
 
 ---
 
-## 结论：推荐方案
+## 3. llama.cpp Server API 速查
 
-### 作为 VLM-mcp 后端，按优先级排序：
+### 3.1 端点一览
 
-| 优先级 | 方案 | 原因 |
-|--------|------|------|
-| **1** | **llama.cpp server** | 生产级，OpenAI + Anthropic 双协议，Continuous Batching，MCP 工具内置，多模态原生支持，API Key 鉴权 |
-| 2 | llama-cpp-python 内嵌 | 如果已有 Python 进程，可避免额外 HTTP 开销，但并发弱于 server 模式 |
-| 3 | Ollama | 开发体验最好，模型管理方便，但并发和生产能力不如 llama.cpp server |
+| 端点 | 协议 | 说明 |
+|------|------|------|
+| `GET /health` | 原生 | 健康检查（加载中 503，就绪 200） |
+| `POST /v1/chat/completions` | **OpenAI** | 对话补全，**多模态支持** |
+| `POST /v1/chat/completions/control` | OpenAI | 实时控制推理（提前结束 reasoning） |
+| `POST /v1/completions` | OpenAI | 文本补全 |
+| `POST /v1/responses` | OpenAI | Responses API（自动转 Chat） |
+| `POST /v1/embeddings` | OpenAI | 嵌入向量 |
+| `POST /v1/messages` | **Anthropic** | Messages API（备选协议） |
+| `GET /v1/models` | OpenAI | 模型信息 |
+| `POST /completion` | 原生 | 原生补全（参数更丰富） |
+| `POST /tokenize` | 原生 | 分词 |
+| `GET /props` | 原生 | 服务属性 |
+| `GET /slots` | 原生 | Slot 状态监控 |
 
-### 统一接入方案
+### 3.2 `/v1/chat/completions` 多模态参数详解
 
-由于三者都支持 OpenAI 兼容 API，可以**统一用 OpenAI SDK 客户端**接入：
-```python
-import openai
+这是 VLM-mcp 的核心调用端点。请求体关键字段：
 
-class LlamaBackend:
-    def __init__(self, base_url: str, api_key: str = "sk-no-key-required"):
-        self.client = openai.OpenAI(base_url=base_url, api_key=api_key)
+```json
+{
+  "model": "gpt-3.5-turbo",
+  "messages": [{
+    "role": "user",
+    "content": [
+      {"type": "image_url", "image_url": {"url": "<url>"}},
+      {"type": "text", "text": "describe this image"}
+    ]
+  }],
+  "stream": false,
+  "max_tokens": 1024
+}
+```
 
-    def chat(self, messages, **kwargs):
-        return self.client.chat.completions.create(
-            model="gpt-3.5-turbo",  # 任意占位名
-            messages=messages,
-            **kwargs
-        )
+**`image_url.url` 支持三种格式**：
 
-# 切换后端只需改 base_url
-llama_cpp_backend = LlamaBackend("http://localhost:8080/v1")
-ollama_backend = LlamaBackend("http://localhost:11434/v1")
+| 格式 | 示例 | 条件 |
+|------|------|------|
+| 远程 URL | `https://example.com/photo.jpg` | 无需额外配置 |
+| Base64 | `data:image/png;base64,iVBOR...` 或纯 base64 | 无需额外配置 |
+| 本地文件 | `file://photo.jpg` | 需 `--media-path` 指定根目录 |
+
+**支持的图片格式**: jpeg、png、tga、bmp、gif（通过 stb_image）
+
+**其他媒体类型**：
+- `type: "input_audio"` → `input_audio.data` / `input_audio.url`（mp3、wav、flac）
+- `type: "input_video"` → `input_video.data` / `input_video.url`（ffmpeg 支持格式）
+
+### 3.3 响应结构
+
+```json
+{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": "...",
+      "reasoning_content": "..."   // reasoning 模式
+    }
+  }],
+  "usage": {
+    "completion_tokens": 48,
+    "prompt_tokens": 44,
+    "total_tokens": 92,
+    "prompt_tokens_details": {"cached_tokens": 0}
+  },
+  "timings": {
+    "prompt_n": 1,
+    "prompt_ms": 30.958,
+    "predicted_n": 35,
+    "predicted_ms": 661.064,
+    "predicted_per_second": 52.94
+  }
+}
 ```
 
 ---
 
-## 参考来源
+## 4. 已实现 vs 可优化
 
-- [llama.cpp GitHub](https://github.com/ggml-org/llama.cpp) — 底层 C/C++ 推理引擎
-- [llama.cpp Server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) — OpenAI 兼容 Server API 文档
-- [Ollama GitHub](https://github.com/ollama/ollama) — 用户友好 LLM 运行工具
-- [Ollama API 文档](https://github.com/ollama/ollama/blob/main/docs/api.md) — 自有 REST API
-- [llama-cpp-python GitHub](https://github.com/abetlen/llama-cpp-python) — Python 绑定 + OpenAI 兼容 Server
-- [llama-cpp-python 文档](https://llama-cpp-python.readthedocs.io/en/latest/) — 完整 API 参考
+### 4.1 已正确实现
+
+| 功能 | 实现方式 | 状态 |
+|------|---------|------|
+| 子进程生命周期 | `subprocess.Popen` + `atexit` | 正确 |
+| 健康检查 | `GET /health` → `status: "ok"` | 正确 |
+| 模型预热 | `POST /v1/chat/completions` with `max_tokens=1` | 正确 |
+| 图片 Data URI | `data:image/...;base64,...` | 正确 |
+| 异步 API | `AsyncOpenAI` | 正确 |
+| 错误处理 | 401/403 禁用后端，5xx 重试 | 正确 |
+| 启动参数 | 完整覆盖核心参数 | 基本正确 |
+
+### 4.2 参数核对发现的问题
+
+| 参数 | 当前值 | 当前默认值 | 建议 |
+|------|--------|-----------|------|
+| `--repeat-penalty` | 1.0 | 1.0 | 正确，无需改 |
+| `--presence-penalty` | 1.5 | 0.0 | **注意**：当前注释说重复惩罚，实际是 presence penalty。1.5 偏高，VLM 任务通常不需要 |
+| `--top-k` | 20 | 40 | 偏保守，合理 |
+| `--top-p` | 0.8 | 0.95 | 偏保守，合理 |
+| `-np 1` | 1 | auto | 无并发需求，合理 |
+| `--no-webui` | 有 | 无 | 生产环境合理 |
+
+### 4.3 未利用的新特性
+
+| 特性 | 说明 | 在 VLM-mcp 中的价值 |
+|------|------|-------------------|
+| **Reasoning / Thinking** | `reasoning_effort` + `reasoning_format` | 对复杂图片分析可开启思考链 |
+| **`--image-max-tokens`** | 限制图片最大 token 数 | 防止大图撑爆 context |
+| **`--media-path`** | 本地文件目录 | 当前只用 base64，可扩展支持文件路径 |
+| **`--metrics`** | Prometheus 指标 | 生产监控 |
+| **`--jinja`** | Jinja 模板引擎 | 默认已启用，Function Calling 需要 |
+| **`--cache-ram`** | 模型缓存（MiB） | 多模型切换时加速 |
+| **`--ctx-checkpoints`** | Context 检查点 | 多轮对话时节省 KV cache |
+| **`--api-key`** | API 鉴权 | 生产安全 |
+| **`--tools`** | 内置 Agent 工具 | 可让 LLM 直接读写文件/执行 shell |
+| **`--mcp-servers-config`** | MCP Server 代理 | 扩展 llama.cpp 的工具能力 |
+
+### 4.4 图片相关参数
+
+| 参数 | 当前值 | 默认值 | 说明 |
+|------|--------|--------|------|
+| `--image-min-tokens 1024` | 1024 | 模型默认 | 动态分辨率模型的最小 token 数 |
+| `--image-max-tokens` | 未设置 | 模型默认 | 限制图片最大 token，防止大图超限 |
+| `--mtmd-batch-max-tokens` | 未设置 | 1024 | 图片编码时每批最大 token 数 |
+
+**建议**: 如果使用动态分辨率 VLM 模型（如 Qwen2-VL、Gemma 3），最好显式设置 `--image-max-tokens` 防止大分辨率图片耗尽 context。
+
+---
+
+## 5. 关键参数速查
+
+### 5.1 模型加载（VLM 相关）
+
+| 参数 | 说明 |
+|------|------|
+| `-m, --model` | 文本模型 GGUF 路径 |
+| `-mm, --mmproj` | 视觉 projector GGUF 路径 |
+| `-hf, --hf-repo` | HuggingFace 仓库，自动下载模型+mmproj |
+| `--mmproj-offload` / `--no-mmproj-offload` | projector 是否 GPU 加速（默认 on） |
+| `--image-min-tokens N` | 图片最小 token 数 |
+| `--image-max-tokens N` | 图片最大 token 数 |
+| `--video-fps N` | 视频帧率（默认 4.0） |
+| `--media-path PATH` | 本地媒体文件根目录 |
+
+### 5.2 推理参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `-c, --ctx-size` | 模型默认 | 上下文窗口 |
+| `-n, --predict` | -1(无限) | 最大生成 token |
+| `-np, --parallel` | auto | 并发 slot 数 |
+| `--temp` | 0.80 | 温度 |
+| `--top-k` | 40 | Top-K 采样 |
+| `--top-p` | 0.95 | Top-P 采样 |
+| `--min-p` | 0.05 | Min-P 采样 |
+| `-fa, --flash-attn` | auto | Flash Attention |
+
+### 5.3 服务配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--host` | 127.0.0.1 | 监听地址 |
+| `--port` | 8080 | 监听端口 |
+| `--api-key` | 无 | API 鉴权 |
+| `--api-prefix` | 空 | API 路径前缀 |
+| `--cors-origins` | `*` | CORS 来源 |
+| `--metrics` | disabled | Prometheus 指标 |
+| `--jinja` | enabled | Jinja 模板（Function Calling 需要） |
+
+### 5.4 Reasoning / Thinking
+
+| 参数 | 说明 |
+|------|------|
+| `--reasoning [on\|off\|auto]` | 是否启用 reasoning |
+| `--reasoning-effort LEVEL` | 思考深度: minimal/low/medium/high/xhigh/max |
+| `--reasoning-budget N` | token 预算（-1 无限，0 立即结束） |
+| `--reasoning-format FORMAT` | 输出格式: none/deepseek/deepseek-legacy |
+
+### 5.5 Agent 模式
+
+| 参数 | 说明 |
+|------|------|
+| `--agent` | 一键启用所有 agent 功能 |
+| `--tools all` | 内置工具: read_file, write_file, grep_search, exec_shell_command 等 |
+| `--mcp-servers-config` | Cursor 兼容 MCP server 配置 |
+| `--tools-runtime` | 隔离运行环境: docker/ssh |
+
+---
+
+## 6. 结论与建议
+
+### 6.1 当前实现评估
+
+VLM-mcp 对 llama.cpp server 的集成**整体正确、结构清晰**。子进程管理、健康检查、图片 Data URI 传参、异步 API 调用均符合 llama.cpp server 的最佳实践。
+
+### 6.2 建议优化项
+
+1. **显式设置 `--image-max-tokens`**：防止动态分辨率模型的大图占用过多 context
+2. **降低 `presence_penalty`**：当前 1.5 偏高，VLM 描述任务通常不需要高惩罚，建议 0.0~0.3
+3. **考虑 `--media-path`**：如果用户需要传本地文件路径而非 base64，设置此参数
+4. **生产环境加 `--api-key`**：当前无鉴权
+5. **Reasoning 可选**：对复杂图片分析场景，可开放 `reasoning_effort` 参数
+6. **监控**：`--metrics` 暴露 Prometheus 指标，便于观察推理性能
+
+### 6.3 多模态模型推荐
+
+从 HuggingFace ggml-org 集合中选择: https://huggingface.co/collections/ggml-org/multimodal-ggufs-68244e01ff1f39e5bebeeedc
+
+常用 VLM 模型（支持 `-hf` 一行下载）：
+- `ggml-org/gemma-3-4b-it-GGUF` — Google Gemma 3 视觉模型
+- `ggml-org/Qwen2-VL-7B-Instruct-GGUF` — 通义千问视觉
+- `ggml-org/llava-v1.6-34b-GGUF` — LLaVA 经典模型
+
+### 参考来源
+
+- [llama.cpp Server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+- [llama.cpp Multimodal 文档](https://github.com/ggml-org/llama.cpp/blob/master/docs/multimodal.md)
+- [llama.cpp Server Changelog](https://github.com/ggml-org/llama.cpp/issues/9291)
+- 项目源码: `llama_launcher.py`, `providers/openai_compat.py`, `config.py`, `server.py`

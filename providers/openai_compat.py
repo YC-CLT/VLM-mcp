@@ -87,7 +87,7 @@ class OpenAICompatProvider(BaseProvider):
             required.append("api_key")
         for field in required:
             if not cfg.get(field):
-                _disabled_backends.dadd(backend_name)
+                _disabled_backends.add(backend_name)
                 raise BackendDisabledError(
                     f"Backend '{backend_name}' is disabled: '{field}' is empty"
                 )
