@@ -15,15 +15,19 @@ class OCRProvider:
             if self._ocr is None:
                 self._ocr = await asyncio.to_thread(RapidOCR)
             self._cancel_unload()
-            result, _ = await asyncio.to_thread(self._ocr, image_bytes)
+
+        result, _ = await asyncio.to_thread(self._ocr, image_bytes)
+
+        async with self._lock:
             self._schedule_unload()
-            return result
+        return result
 
     def _cancel_unload(self):
         if self._unload_task and not self._unload_task.done():
             self._unload_task.cancel()
 
     def _schedule_unload(self):
+        self._cancel_unload()
         self._unload_task = asyncio.create_task(self._unload_after(self._unload_delay))
 
     async def _unload_after(self, delay: float):

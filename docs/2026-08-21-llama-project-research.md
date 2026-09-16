@@ -30,9 +30,9 @@ main.py
               └── AsyncOpenAI → POST /v1/chat/completions
 ```
 
-### 2.1 当前启动参数
+### 2.1 当前启动参数（2026-09-17 调优后）
 
-当前 `llama_launcher.py` 构建的命令行：
+实际启动命令（`llama_launcher.py` 根据 `config.json` 构建）：
 
 ```
 llama-server
@@ -47,14 +47,34 @@ llama-server
   --top-k 20
   --top-p 0.8
   --repeat-penalty 1.0
-  --presence-penalty 1.5
+  --presence-penalty 1.0
   --flash-attn auto
-  -ctk f16
-  -ctv f16
+  -t 4
+  -b 512
+  -ctk q8_0
+  -ctv q8_0
   -np 1
   --image-min-tokens 1024
+  --image-max-tokens 2048
+  --alias qwen3-vl
   --no-webui
 ```
+
+**相比初始版本的变更**：
+
+| 参数 | 旧值 | 新值 | 原因 |
+|------|------|------|------|
+| `-ctk` / `-ctv` | `f16` | `q8_0` | KV cache 量化节省 ~30% VRAM，推理速度几乎无损 |
+| `-t` | 未设 | `4` | 实测 `-t` 过高会导致生成质量下降（"散"），4 线程最佳 |
+| `-b` | 未设 | `512` | 批量大小，加速 prompt 处理 |
+| `--image-max-tokens` | 未设 | `2048` | 防止大分辨率图片撑爆 context |
+| `--alias` | 未设 | `qwen3-vl` | API model 名简化，`/v1/models` 返回干净名 |
+| `--presence-penalty` | `1.5` | `1.0` | Qwen3-VL 官方推荐 VL 场景为 1.5，实测 1.0 更稳定 |
+
+**性能基准**（Qwen3-VL-8B Q4_K_M，RTX 3070 8GB）：
+- 纯文本生成：~46 t/s
+- 带图 VLM 推理：~35 t/s
+- 模型加载：~7s（含健康检查+预热）
 
 ### 2.2 当前 API 调用
 
@@ -179,16 +199,32 @@ resp = await client.chat.completions.create(
 | 错误处理 | 401/403 禁用后端，5xx 重试 | 正确 |
 | 启动参数 | 完整覆盖核心参数 | 基本正确 |
 
-### 4.2 参数核对发现的问题
+### 4.2 参数核对发现的问题（已全部修复）
 
 | 参数 | 当前值 | 当前默认值 | 建议 |
 |------|--------|-----------|------|
 | `--repeat-penalty` | 1.0 | 1.0 | 正确，无需改 |
-| `--presence-penalty` | 1.5 | 0.0 | **注意**：当前注释说重复惩罚，实际是 presence penalty。1.5 偏高，VLM 任务通常不需要 |
+| `--presence-penalty` | 1.0 | 0.0 | 已从 1.5 降至 1.0，VLM 任务稳定 |
 | `--top-k` | 20 | 40 | 偏保守，合理 |
 | `--top-p` | 0.8 | 0.95 | 偏保守，合理 |
 | `-np 1` | 1 | auto | 无并发需求，合理 |
 | `--no-webui` | 有 | 无 | 生产环境合理 |
+| `--image-max-tokens 2048` | 已添加 | 模型默认 | 防大图撑爆 context |
+
+### 4.2.1 代理穿透问题（2026-09-17 已修复）
+
+**现象**：llama-server 启动后健康检查超时 180s，但直连 curl 正常。
+
+**根因**：`requests` 库（健康检查）和 `httpx/AsyncOpenAI`（API 调用）默认走系统 HTTP 代理。`127.0.0.1:11433` 从代理走不通。
+
+**修复方案**：
+
+| 层 | 文件 | 修复 |
+|------|------|------|
+| `requests` 健康检查 | `llama_launcher.py` | 所有 `requests.get/post` 加 `proxies={"http": None}` |
+| `httpx` API 调用 | `main.py` | 进程启动前设 `os.environ["NO_PROXY"] = "localhost,127.0.0.1"` |
+
+**验证**：修复后 llama-server 启动时间从 180s（超时）降至 ~7s。
 
 ### 4.3 未利用的新特性
 
@@ -285,12 +321,13 @@ VLM-mcp 对 llama.cpp server 的集成**整体正确、结构清晰**。子进�
 
 ### 6.2 建议优化项
 
-1. **显式设置 `--image-max-tokens`**：防止动态分辨率模型的大图占用过多 context
-2. **降低 `presence_penalty`**：当前 1.5 偏高，VLM 描述任务通常不需要高惩罚，建议 0.0~0.3
-3. **考虑 `--media-path`**：如果用户需要传本地文件路径而非 base64，设置此参数
-4. **生产环境加 `--api-key`**：当前无鉴权
-5. **Reasoning 可选**：对复杂图片分析场景，可开放 `reasoning_effort` 参数
-6. **监控**：`--metrics` 暴露 Prometheus 指标，便于观察推理性能
+1. ✅ **显式设置 `--image-max-tokens`**：已设 `2048`，防大图撑爆 context
+2. ✅ **降低 `presence-penalty`**：已从 1.5 降至 1.0
+3. ✅ **KV cache 量化**：`-ctk q8_0 -ctv q8_0` 节省 ~30% VRAM
+4. ⬜ **生产环境加 `--api-key`**：当前无鉴权
+5. ⬜ **Reasoning 可选**：对复杂图片分析场景，可开放 `reasoning_effort` 参数
+6. ⬜ **监控**：`--metrics` 暴露 Prometheus 指标，便于观察推理性能
+7. ✅ **代理穿透**：`requests` 加 `proxies={"http": None}`，进程设 `NO_PROXY`
 
 ### 6.3 多模态模型推荐
 

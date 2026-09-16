@@ -85,3 +85,6 @@
 - **懒加载 Provider 测试需 mock 启动函数**：openai_compat 中 `_ensure_llama_running` 会启动真实子进程，测试中必须 patch 掉，否则挂起超时
 - **config.json 真实值影响测试**：`get_provider("llama-cpp")` 依赖 `config.BACKENDS["llama-cpp"]["enabled"]`，若真实配置为 `false` 则测试需 `patch.dict("config.BACKENDS", ...)` 覆盖
 - **`git add -A` 会删除文件**：提交时勿用 `-A`，会意外删除不在版本控制中的文件，应用 `git add <specific files>`
+- **本地 HTTP 必须穿透代理**：`requests` 库调用 `localhost/127.0.0.1` 需显式 `proxies={"http": None}`，`httpx/AsyncOpenAI` 需设置 `NO_PROXY` 环境变量。两套 HTTP 库都需要处理，缺一不可
+- **llama.cpp `-t` 不是越高越好**：线程数过高会导致 VLM 生成质量下降（"散"），Qwen3-VL 8B 实测 4 线程最佳
+- **llama.cpp KV cache 量化几乎无损**：`-ctk q8_0 -ctv q8_0` 相比 f16 节省 ~30% VRAM，推理速度无明显差异

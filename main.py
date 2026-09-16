@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,.local")
+
 from logger import get_logger
 
 logger = get_logger()

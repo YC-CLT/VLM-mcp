@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-09-17 — llama-server 参数调优 + 代理穿透修复
+
+### Fixed
+
+- **代理穿透**：`requests` 和 `httpx/AsyncOpenAI` 默认走系统 HTTP 代理，导致 `127.0.0.1:11433` 本地通信超时 180s
+  - `llama_launcher.py`：所有 `requests.get/post` 加 `proxies={"http": None}`
+  - `main.py`：进程启动前设 `os.environ["NO_PROXY"] = "localhost,127.0.0.1"`
+  - 修复后 llama-server 启动时间从 180s（超时）降至 ~7s
+- **`server.py` dconfig 未定义**：`dconfig.CACHE_ENABLED` → `config.CACHE_ENABLED`
+
+### Changed
+
+- **llama-server 启动参数优化**：
+  - `-ctk q8_0 -ctv q8_0`：KV cache 量化节省 ~30% VRAM
+  - `-t 4`：限制线程数防生成质量下降
+  - `-b 512`：批量大小加速 prompt 处理
+  - `--image-max-tokens 2048`：防大图撑爆 context
+  - `--alias qwen3-vl`：API model 名简化
+  - `--presence-penalty 1.5 → 1.0`：更稳定
+- **OCR 并发优化**：缩小锁范围，推理过程移出锁外
+- **config.example.json**：同步所有新参数 + 路径模板更友好
+- **config.py LLAMA_DEFAULTS**：同步所有新默认值
+
+### Documentation
+
+- **README.md**：config 示例补全所有 `llama` 参数 + FAQ 加代理问题
+- **docs/2026-08-21-llama-project-research.md**：更新启动参数、已完成建议项、代理穿透小节
+
 ## 2026-09-04 — Skill 文档优化 + 测试修复
 
 ### Changed

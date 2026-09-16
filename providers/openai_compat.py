@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 
 from openai import AsyncOpenAI
@@ -98,8 +99,10 @@ class OpenAICompatProvider(BaseProvider):
             )
 
         self._name = backend_name
+
+        base_url = cfg["base_url"]
         self._client = AsyncOpenAI(
-            base_url=cfg["base_url"],
+            base_url=base_url,
             api_key=cfg.get("api_key", "sk-no-key-required"),
         )
         self._model = cfg["model_name"]

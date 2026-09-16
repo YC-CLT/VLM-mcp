@@ -103,7 +103,25 @@ Edit `config.json`:
     "server_exe": "llama-server",
     "model": "D:/path/to/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
     "mmproj": "D:/path/to/mmproj-Qwen3VL-8B-Instruct-F16.gguf",
-    "ngl": 99
+    "ngl": 99,
+    "ctx_size": 8192,
+    "predict": 16384,
+    "temperature": 0.7,
+    "top_k": 20,
+    "top_p": 0.8,
+    "repeat_penalty": 1.0,
+    "presence_penalty": 1.0,
+    "flash_attn": "auto",
+    "threads": 4,
+    "batch_size": 512,
+    "cache_type_k": "q8_0",
+    "cache_type_v": "q8_0",
+    "parallel": 1,
+    "image_min_tokens": 1024,
+    "image_max_tokens": 2048,
+    "alias": "qwen3-vl",
+    "health_poll_interval": 3,
+    "health_poll_timeout": 180
   }
 }
 ```
@@ -231,6 +249,9 @@ Invalid API key auto-disables the backend. Set a valid key and restart. Or set `
 **Port conflict?**  
 MCP uses stdio transport. llama-server uses port 11433 (configurable in `config.json`).
 
+**VLM calls are very slow or timeout?**  
+May be caused by system HTTP proxy. The MCP talks to `127.0.0.1:11433` which should never go through a proxy. Ensure `NO_PROXY` includes `localhost,127.0.0.1`. Latest version handles this automatically.
+
 ---
 
 ## 中文
@@ -326,7 +347,25 @@ cp config.example.json config.json
     "server_exe": "llama-server",
     "model": "D:/path/to/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
     "mmproj": "D:/path/to/mmproj-Qwen3VL-8B-Instruct-F16.gguf",
-    "ngl": 99
+    "ngl": 99,
+    "ctx_size": 8192,
+    "predict": 16384,
+    "temperature": 0.7,
+    "top_k": 20,
+    "top_p": 0.8,
+    "repeat_penalty": 1.0,
+    "presence_penalty": 1.0,
+    "flash_attn": "auto",
+    "threads": 4,
+    "batch_size": 512,
+    "cache_type_k": "q8_0",
+    "cache_type_v": "q8_0",
+    "parallel": 1,
+    "image_min_tokens": 1024,
+    "image_max_tokens": 2048,
+    "alias": "qwen3-vl",
+    "health_poll_interval": 3,
+    "health_poll_timeout": 180
   }
 }
 ```
@@ -453,6 +492,9 @@ API Key 无效时会自动禁用该后端，设好 Key 后重启即可恢复。�
 
 **端口被占用？**  
 MCP 使用 stdio 传输。llama-server 端口 11433（可在 `config.json` 中配置）。
+
+**VLM 调用很慢或超时？**  
+可能是系统 HTTP 代理导致。MCP 与 `127.0.0.1:11433` 通信不应走代理。确保 `NO_PROXY` 包含 `localhost,127.0.0.1`。最新版已自动处理。
 
 ## 许可
 

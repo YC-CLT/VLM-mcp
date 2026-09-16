@@ -42,7 +42,7 @@ def _check_health(host: str, port: int, timeout: int, interval: int) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            resp = requests.get(url, timeout=5)
+            resp = requests.get(url, timeout=5, proxies={"http": None})
             if resp.status_code == 200 and resp.json().get("status") == "ok":
                 return True
         except requests.RequestException:
@@ -58,6 +58,7 @@ def _check_model_ready(host: str, port: int) -> bool:
             url,
             json={"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1},
             timeout=30,
+            proxies={"http": None},
         )
         if resp.status_code == 200:
             return True
@@ -74,7 +75,7 @@ def start() -> subprocess.Popen | None:
     port = cfg["port"]
 
     try:
-        resp = requests.get(f"http://{host}:{port}/health", timeout=3)
+        resp = requests.get(f"http://{host}:{port}/health", timeout=3, proxies={"http": None})
         if resp.status_code == 200 and resp.json().get("status") == "ok":
             logger.info("Reusing existing llama-server on %s:%s", host, port)
             return None
@@ -101,8 +102,16 @@ def start() -> subprocess.Popen | None:
         "-ctv", str(cfg["cache_type_v"]),
         "-np", str(cfg["parallel"]),
         "--image-min-tokens", str(cfg.get("image_min_tokens", 1024)),
+        "--image-max-tokens", str(cfg.get("image_max_tokens", 2048)),
         "--no-webui",
     ]
+
+    if "threads" in cfg:
+        cmd.extend(["-t", str(cfg["threads"])])
+    if "batch_size" in cfg:
+        cmd.extend(["-b", str(cfg["batch_size"])])
+    if "alias" in cfg:
+        cmd.extend(["--alias", str(cfg["alias"])])
 
     log_path = Path(__file__).parent / "llama_server.log"
     log_file = open(log_path, "a", encoding="utf-8")

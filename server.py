@@ -149,7 +149,7 @@ async def analyze_image(
                 }
             else:
                 result = await provider.analyze(img_input, prompt)
-                if img_bytes is not None and dconfig.CACHE_ENABLED:
+                if img_bytes is not None and config.CACHE_ENABLED:
                     await response_cache.set(
                         img_bytes, prompt, backend,
                         {"text": result.text, "tokens_used": result.tokens_used, "model": result.model},
